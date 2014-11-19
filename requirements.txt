@@ -1,2 +1,3 @@
 OctoPrint
 semantic_version
+requests
