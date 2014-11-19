@@ -34,7 +34,7 @@ default_settings = {
 	"python_executable": sys.executable,
 	"git_executable": None,
 	"check_type": "release",
-	"octoprint_update_script": os.path.join(os.path.dirname(os.path.realpath(__file__)), "scripts", "update-octoprint.py"),
+	"octoprint_update_script": "{{python}} \"{update_script}\" --python=\"{{python}}\" \"{{folder}}\" {{target}}".format(update_script=os.path.join(os.path.dirname(os.path.realpath(__file__)), "scripts", "update-octoprint.py")),
 	"octoprint_restart_command": None
 }
 s = octoprint.plugin.plugin_settings("softwareupdate", defaults=default_settings)
@@ -69,6 +69,8 @@ def perform_update():
 	if not folder:
 		flask.make_response("Checkout folder is not configured, can't update", 500)
 
+	python_executable = s.get(["python_executable"])
+
 	if "type" in flask.request.values:
 		check_type = flask.request.values["type"]
 	else:
@@ -81,7 +83,7 @@ def perform_update():
 	if not update_available:
 		flask.make_response("No update available!", 400) # TODO other status code?
 
-	command = " ".join([sys.executable, "\"%s\"" % update_script, "--python=\"%s\"" % sys.executable, "\"%s\"" % folder, information["remote"]["value"]])
+	command = update_script.format(python=python_executable, folder=folder, target=information["remote"]["value"])
 	p = None
 
 	import sarge

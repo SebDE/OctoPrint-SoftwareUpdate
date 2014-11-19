@@ -94,7 +94,8 @@ def install_source(python_executable, folder):
 	print("Running: python setup.py clean")
 	returncode, stdout = _python(["setup.py", "clean"], folder, python_executable)
 	if returncode != 0:
-		raise RuntimeError("Could not update, \"python setup.py clean\" failed with returncode %d: %s" % (returncode, stdout))
+		print("\"python setup.py clean\" failed with returncode %d: %s" % (returncode, stdout))
+		print("Continuing anyways")
 
 	print("Running: python setup.py install")
 	returncode, stdout = _python(["setup.py", "install"], folder, python_executable)

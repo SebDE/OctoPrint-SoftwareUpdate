@@ -34,7 +34,7 @@ $(function() {
                             };
                             options["buttons"] = {
                                 closer: false,
-                                    sticker: false
+                                sticker: false
                             };
                         }
 
