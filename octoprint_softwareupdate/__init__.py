@@ -122,6 +122,7 @@ def perform_update():
 	import threading
 	restart_thread = threading.Thread(target=restart_handler, args=(restart_command))
 	restart_thread.daemon = True
+	restart_thread.start()
 
 	return flask.jsonify(dict(result="success", stdout=p.stdout.text, stderr=p.stderr.text))
 

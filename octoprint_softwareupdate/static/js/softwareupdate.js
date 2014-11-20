@@ -97,7 +97,7 @@ $(function() {
                         };
                         self.waitingForRestart = true;
                         self.restartTimeout = setTimeout(function() {
-                            self._showPopoup({
+                            self._showPopup({
                                 title: gettext("Restart failed"),
                                 test: gettext("The server apparently did not restart by itself, you'll have to do it manually. Please consult the log file on what went wrong."),
                                 type: "error",
