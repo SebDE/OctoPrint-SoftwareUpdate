@@ -86,6 +86,8 @@ def perform_update():
 	command = update_script.format(python=python_executable, folder=folder, target=information["remote"]["value"])
 	p = None
 
+	logger.info("Starting update to %s..." % information["remote"]["value"])
+
 	import sarge
 	try:
 		p = sarge.run(command, cwd=folder, stdout=sarge.Capture(), stderr=sarge.Capture())
@@ -98,14 +100,14 @@ def perform_update():
 	else:
 		logger.debug("Update stdout:\n%s" % p.stdout.text)
 		logger.debug("Update stderr:\n%s" % p.stderr.text)
+		logger.info("Update to %s successful!" % information["remote"]["value"])
 
 	restart_command = s.get(["octoprint_restart_command"])
 	if restart_command is None:
 		return flask.jsonify(dict(result="restart", stdout=p.stdout.text, stderr=p.stderr.text))
 
 	def restart_handler(restart_command):
-		import time
-		time.sleep(1)
+		logger.info("Restarting...")
 
 		p = None
 		try:
