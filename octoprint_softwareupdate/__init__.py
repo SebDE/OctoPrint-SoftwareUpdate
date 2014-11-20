@@ -92,28 +92,38 @@ def perform_update():
 	except:
 		logger.exception("Error while executing update script")
 		if p is not None and p.stderr is not None:
-			logger.warn("STDOUT: %s" % p.stdout.text)
-			logger.warn("STDERR: %s" % p.stderr.text)
+			logger.warn("Update stdout:\n%s" % p.stdout.text)
+			logger.warn("Update stderr:\n%s" % p.stderr.text)
 		return flask.jsonify(dict(result="error", stdout=p.stdout.text if p is not None and p.stdout.text is not None else "", stderr=p.stderr.text if p is not None and p.stderr.text is not None else ""))
 	else:
-		logger.debug("STDOUT: %s" % p.stdout.text)
-		logger.warn("STDERR: %s" % p.stderr.text)
+		logger.debug("Update stdout:\n%s" % p.stdout.text)
+		logger.debug("Update stderr:\n%s" % p.stderr.text)
 
 	restart_command = s.get(["octoprint_restart_command"])
 	if restart_command is None:
 		return flask.jsonify(dict(result="restart", stdout=p.stdout.text, stderr=p.stderr.text))
 
-	p2 = None
-	try:
-		p2 = sarge.run(restart_command, stdout=sarge.Capture(), stderr=sarge.Capture())
-	except:
-		logger.exceptino("Error while restarting server")
-		if p2 is not None and p2.stderr is not None:
-			logger.warn("STDOUT: %s" % p2.stdout.text)
-			logger.warn("STDERR: %s" % p2.stderr.text)
-		return flask.jsonify(dict(result="restart", stdout=p.stdout.text if p is not None and p.stdout.text is not None else "", stderr=p.stderr.text if p is not None and p.stderr.text is not None else ""))
-	else:
-		return flask.jsonify(dict(result="success", stdout=p.stdout.text, stderr=p.stderr.text))
+	def restart_handler(restart_command):
+		import time
+		time.sleep(1)
+
+		p = None
+		try:
+			p = sarge.run(restart_command, stdout=sarge.Capture(), stderr=sarge.Capture())
+		except:
+			logger.exception("Error while restarting server")
+			if p is not None and p.stderr is not None:
+				logger.warn("Restart stdout:\n%s" % p.stdout.text)
+				logger.warn("Restart stderr:\n%s" % p.stderr.text)
+		else:
+			logger.debug("Restart stdout:\n%s" % p.stdout.text)
+			logger.debug("Restart stderr:\n%s" % p.stderr.text)
+
+	import threading
+	restart_thread = threading.Thread(target=restart_handler, args=(restart_command))
+	restart_thread.daemon = True
+
+	return flask.jsonify(dict(result="success", stdout=p.stdout.text, stderr=p.stderr.text))
 
 
 def _get_current_information(check_type):

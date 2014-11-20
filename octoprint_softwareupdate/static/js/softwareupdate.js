@@ -3,10 +3,22 @@ $(function() {
         var self = this;
 
         self.loginState = parameters[0];
+        self.popup = undefined;
+
+        self.updateInProgress = false;
+        self.waitingForRestart = false;
+        self.restartTimeout = undefined;
 
         self.loginState.subscribe(function(event) {
             self.performCheck();
         });
+
+        self._showPopup = function(options) {
+            if (self.popup !== undefined) {
+                self.popup.remove();
+            }
+            self.popup = new PNotify(options);
+        };
 
         self.performCheck = function() {
             if (!self.loginState.isUser()) return;
@@ -38,52 +50,115 @@ $(function() {
                             };
                         }
 
-                        new PNotify(options);
+                        self._showPopup(options);
                     }
                 }
             });
         };
 
         self.update = function() {
+            if (self.updateInProgress) return;
+            self.updateInProgress = true;
+
             // TODO: add confirmation dialog
+
+            var options = {
+                title: gettext("Updating..."),
+                text: gettext("Now updating, please wait."),
+                icon: "icon-cog icon-spin",
+                hide: false,
+                buttons: {
+                    closer: false,
+                    sticker: false
+                }
+            };
+            self._showPopup(options);
 
             $.ajax({
                 url: PLUGIN_BASEURL + "softwareupdate/update",
                 type: "POST",
                 dataType: "json",
                 contentType: "application/json; charset=UTF-8",
+                complete: function() {
+                    self.updateInProgress = false;
+                },
                 success: function(data) {
-                    if (data.result == "success") {
-                        var options = {
-                            title: gettext("Update successful!"),
-                            text: gettext("The update finished successfully and the server was restarted. The page will reload automatically in 5 seconds"),
-                            type: "success",
-                            hide: false
-                        };
+                    var options = undefined;
 
-                        new PNotify(options);
+                    if (data.result == "success") {
+                        options = {
+                            title: gettext("Update successful, restarting!"),
+                            text: gettext("The update finished successfully and the server will now be restarted. The page will reload automatically."),
+                            type: "success",
+                            hide: false,
+                            buttons: {
+                                sticker: false
+                            }
+                        };
+                        self.waitingForRestart = true;
+                        self.restartTimeout = setTimeout(function() {
+                            self._showPopoup({
+                                title: gettext("Restart failed"),
+                                test: gettext("The server apparently did not restart by itself, you'll have to do it manually. Please consult the log file on what went wrong."),
+                                type: "error",
+                                hide: false,
+                                buttons: {
+                                    sticker: false
+                                }
+                            })
+                        }, 10000);
                     } else if (data.result == "restart") {
-                        new PNotify({
+                        options = {
                             title: gettext("Update successful, restart required!"),
                             text: gettext("The update finished successfully, please restart the server now."),
                             type: "success",
-                            hide: false
-                        });
+                            hide: false,
+                            buttons: {
+                                sticker: false
+                            }
+                        };
                     } else {
-                        new PNotify({
+                        options = {
                             title: gettext("Update failed!"),
                             text: gettext("The update failed, please consult the log files."),
                             type: "error",
-                            hide: false
-                        });
+                            hide: false,
+                            buttons: {
+                                sticker: false
+                            }
+                        };
                     }
 
+                    if (options === undefined) return;
+                    self._showPopup(options);
                 }
             });
         };
 
+        self.onServerDisconnect = function() {
+            return !self.waitingForRestart;
+        };
+
+        self.onDataUpdaterReconnect = function() {
+            if (self.waitingForRestart) {
+                self.waitingForRestart = false;
+                if (self.restartTimeout !== undefined) {
+                    clearTimeout(self.restartTimeout);
+                }
+
+                var options = {
+                    title: gettext("Restart successful!"),
+                    text: gettext("The server was restarted successfully. The page will now reload automatically."),
+                    type: "success",
+                    hide: false
+                };
+                self._showPopup(options);
+            } else {
+                self.performCheck();
+            }
+        };
+
         self.onStartup = self.performCheck;
-        self.onDataUpdaterReconnect = self.performCheck;
     }
 
     // view model class, parameters for constructor, container to bind to
