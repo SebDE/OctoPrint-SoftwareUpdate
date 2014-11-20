@@ -105,7 +105,8 @@ $(function() {
                                 buttons: {
                                     sticker: false
                                 }
-                            })
+                            });
+                            self.waitingForRestart = false;
                         }, 10000);
                     } else if (data.result == "restart") {
                         options = {
