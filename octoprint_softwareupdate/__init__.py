@@ -106,7 +106,7 @@ def perform_update():
 	if restart_command is None:
 		return flask.jsonify(dict(result="restart", stdout=p.stdout.text, stderr=p.stderr.text))
 
-	def restart_handler(restart_command):
+	def restart_handler():
 		logger.info("Restarting...")
 
 		p = None
@@ -122,8 +122,8 @@ def perform_update():
 			logger.debug("Restart stderr:\n%s" % p.stderr.text)
 
 	import threading
-	restart_thread = threading.Thread(target=restart_handler, args=(restart_command))
-	restart_thread.daemon = True
+	restart_thread = threading.Thread(target=restart_handler)
+	restart_thread.daemon = False
 	restart_thread.start()
 
 	return flask.jsonify(dict(result="success", stdout=p.stdout.text, stderr=p.stderr.text))
