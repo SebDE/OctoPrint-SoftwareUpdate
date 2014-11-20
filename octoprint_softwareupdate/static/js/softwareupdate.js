@@ -137,11 +137,15 @@ $(function() {
         };
 
         self.onServerDisconnect = function() {
+            if (self.restartTimeout !== undefined) {
+                clearTimeout(self.restartTimeout);
+            }
+            return true;
+        };
+
+        self.onDataUpdaterReconnect = function() {
             if (self.waitingForRestart) {
                 self.waitingForRestart = false;
-                if (self.restartTimeout !== undefined) {
-                    clearTimeout(self.restartTimeout);
-                }
 
                 var options = {
                     title: gettext("Restart successful!"),
@@ -150,15 +154,7 @@ $(function() {
                     hide: false
                 };
                 self._showPopup(options);
-
-                return false;
             } else {
-                return true;
-            }
-        };
-
-        self.onDataUpdaterReconnect = function() {
-            if (!self.waitingForRestart) {
                 self.performCheck();
             }
         };
