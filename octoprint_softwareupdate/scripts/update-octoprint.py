@@ -69,38 +69,43 @@ def _python(args, cwd, python_executable):
 
 
 def update_source(git_executable, folder, target, force=False):
-	print("Running: git pull")
+	print(">>> Running: git pull")
 	returncode, stdout = _git(["pull"], folder, git_executable=git_executable)
 	if returncode != 0:
 		raise RuntimeError("Could not update, \"git pull\" failed with returncode %d: %s" % (returncode, stdout))
+	print(stdout)
 
-	print("Running: git stash")
+	print(">>> Running: git stash")
 	returncode, stdout = _git(["stash"], folder, git_executable=git_executable)
 	if returncode != 0:
 		raise RuntimeError("Could not update, \"git stash\" failed with returncode %d: %s" % (returncode, stdout))
+	print(stdout)
 
 	reset_command = ["reset"]
 	if force:
 		reset_command += ["--hard"]
 	reset_command += [target]
 
-	print("Running: git %s" % " ".join(reset_command))
+	print(">>> Running: git %s" % " ".join(reset_command))
 	returncode, stdout = _git(reset_command, folder, git_executable=git_executable)
 	if returncode != 0:
 		raise RuntimeError("Error while updating, \"git %s\" failed with returncode %d: %s" % (" ".join(reset_command), returncode, stdout))
+	print(stdout)
 
 
 def install_source(python_executable, folder):
-	print("Running: python setup.py clean")
+	print(">>> Running: python setup.py clean")
 	returncode, stdout = _python(["setup.py", "clean"], folder, python_executable)
 	if returncode != 0:
 		print("\"python setup.py clean\" failed with returncode %d: %s" % (returncode, stdout))
 		print("Continuing anyways")
+	print(stdout)
 
-	print("Running: python setup.py install")
+	print(">>> Running: python setup.py install")
 	returncode, stdout = _python(["setup.py", "install"], folder, python_executable)
 	if returncode != 0:
 		raise RuntimeError("Could not update, \"python setup.py install\" failed with returncode %d: %s" % (returncode, stdout))
+	print(stdout)
 
 
 def parse_arguments():

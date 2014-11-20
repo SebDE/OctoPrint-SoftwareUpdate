@@ -33,8 +33,12 @@ default_settings = {
 	"checkout_folder": None,
 	"python_executable": sys.executable,
 	"git_executable": None,
+
 	"check_type": "release",
+
+	"pre_update_script": None,
 	"octoprint_update_script": "{{python}} \"{update_script}\" --python=\"{{python}}\" \"{{folder}}\" {{target}}".format(update_script=os.path.join(os.path.dirname(os.path.realpath(__file__)), "scripts", "update-octoprint.py")),
+	"post_update_script": None,
 	"octoprint_restart_command": None
 }
 s = octoprint.plugin.plugin_settings("softwareupdate", defaults=default_settings)
@@ -62,6 +66,8 @@ def perform_update():
 	logger = logging.getLogger("octoprint.plugins.softwareupdate")
 
 	update_script = s.get(["octoprint_update_script"])
+	pre_update_script = s.get(["pre_update_script"])
+	post_update_script = s.get(["post_update_script"])
 	if not update_script:
 		flask.make_response("Update script not properly configured, can't update", 500)
 
@@ -83,14 +89,31 @@ def perform_update():
 	if not update_available:
 		flask.make_response("No update available!", 400) # TODO other status code?
 
-	command = update_script.format(python=python_executable, folder=folder, target=information["remote"]["value"])
+	import sarge
 	p = None
+	update_stdout = ""
+	update_stderr = ""
+
+	if pre_update_script is not None:
+		logger.info("Running pre-update script...")
+		try:
+			p = sarge.run(pre_update_script, cwd=folder, stdout=sarge.Capture(), stderr=sarge.Capture())
+		except:
+			logger.exception("Error while executing pre update script")
+			if p is not None:
+				if p.stdout is not None:
+					logger.warn("Pre-Update stdout:\n%s" % p.stdout.text)
+				if p.stderr is not None:
+					logger.warn("Pre-Update stderr:\n%s" % p.stderr.text)
+	else:
+		update_stdout += p.stdout.text
+		update_stderr += p.stderr.text
 
 	logger.info("Starting update to %s..." % information["remote"]["value"])
 
-	import sarge
+	update_command = update_script.format(python=python_executable, folder=folder, target=information["remote"]["value"])
 	try:
-		p = sarge.run(command, cwd=folder, stdout=sarge.Capture(), stderr=sarge.Capture())
+		p = sarge.run(update_command, cwd=folder, stdout=sarge.Capture(), stderr=sarge.Capture())
 	except:
 		logger.exception("Error while executing update script")
 		if p is not None and p.stderr is not None:
@@ -98,9 +121,27 @@ def perform_update():
 			logger.warn("Update stderr:\n%s" % p.stderr.text)
 		return flask.jsonify(dict(result="error", stdout=p.stdout.text if p is not None and p.stdout.text is not None else "", stderr=p.stderr.text if p is not None and p.stderr.text is not None else ""))
 	else:
-		logger.debug("Update stdout:\n%s" % p.stdout.text)
-		logger.debug("Update stderr:\n%s" % p.stderr.text)
-		logger.info("Update to %s successful!" % information["remote"]["value"])
+		update_stdout += p.stdout.text
+		update_stderr += p.stderr.text
+
+	if post_update_script is not None:
+		logger.info("Running post-update script...")
+		try:
+			p = sarge.run(post_update_script, cwd=folder, stdout=sarge.Capture(), stderr=sarge.Capture())
+		except:
+			logger.exception("Error while executing post update script")
+			if p is not None:
+				if p.stdout is not None:
+					logger.warn("Post-Update stdout:\n%s" % p.stdout.text)
+				if p.stderr is not None:
+					logger.warn("Post-Update stderr:\n%s" % p.stderr.text)
+	else:
+		update_stdout += p.stdout.text
+		update_stderr += p.stderr.text
+
+	logger.debug("Update stdout:\n%s" % update_stdout)
+	logger.debug("Update stderr:\n%s" % update_stderr)
+	logger.info("Update to %s successful!" % information["remote"]["value"])
 
 	restart_command = s.get(["octoprint_restart_command"])
 	if restart_command is None:
