@@ -3,6 +3,7 @@ $(function() {
         var self = this;
 
         self.loginState = parameters[0];
+        self.printerState = parameters[1];
         self.popup = undefined;
 
         self.updateInProgress = false;
@@ -56,11 +57,8 @@ $(function() {
             });
         };
 
-        self.update = function() {
-            if (self.updateInProgress) return;
+        self.performUpdate = function() {
             self.updateInProgress = true;
-
-            // TODO: add confirmation dialog
 
             var options = {
                 title: gettext("Updating..."),
@@ -81,6 +79,17 @@ $(function() {
                 contentType: "application/json; charset=UTF-8",
                 complete: function() {
                     self.updateInProgress = false;
+                },
+                error: function() {
+                    self._showPopup({
+                        title: gettext("Update not started!"),
+                        text: gettext("The update could not be started. Is it already active? Please consult the log for details."),
+                        type: "error",
+                        hide: false,
+                        buttons: {
+                            sticker: false
+                        }
+                    });
                 },
                 success: function(data) {
                     var options = undefined;
@@ -136,6 +145,28 @@ $(function() {
             });
         };
 
+        self.update = function() {
+            if (self.updateInProgress) return;
+
+            if (self.printerState.isPrinting()) {
+                new PNotify({
+                    title: gettext("Can't update while printing"),
+                    text: gettext("A print job is currently in progress. Updating will be prevented until it is done."),
+                    type: "error"
+                });
+            } else {
+                $("#confirmation_dialog .confirmation_dialog_message").text(gettext("This will update your OctoPrint installation and restart the server."));
+                $("#confirmation_dialog .confirmation_dialog_acknowledge").unbind("click");
+                $("#confirmation_dialog .confirmation_dialog_acknowledge").click(function(e) {
+                    e.preventDefault();
+                    $("#confirmation_dialog").modal("hide");
+                    self.performUpdate();
+                });
+                $("#confirmation_dialog").modal("show");
+            }
+
+        };
+
         self.onServerDisconnect = function() {
             if (self.restartTimeout !== undefined) {
                 clearTimeout(self.restartTimeout);
@@ -163,5 +194,5 @@ $(function() {
     }
 
     // view model class, parameters for constructor, container to bind to
-    ADDITIONAL_VIEWMODELS.push([SoftwareUpdateViewModel, ["loginStateViewModel"], undefined]);
+    ADDITIONAL_VIEWMODELS.push([SoftwareUpdateViewModel, ["loginStateViewModel", "printerStateViewModel"], undefined]);
 });

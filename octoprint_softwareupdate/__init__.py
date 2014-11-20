@@ -43,6 +43,10 @@ default_settings = {
 }
 s = octoprint.plugin.plugin_settings("softwareupdate", defaults=default_settings)
 
+
+update_in_progress = False
+
+
 blueprint = flask.Blueprint("plugin.softwareupdate", __name__)
 
 @blueprint.route("/check", methods=["GET"])
@@ -63,6 +67,16 @@ def check_for_update():
 @blueprint.route("/update", methods=["POST"])
 @restricted_access
 def perform_update():
+	from octoprint.server import printer
+	if printer.isPrinting():
+		# do not update while a print job is running
+		flask.make_response("Printer is currently printing", 409)
+
+	global update_in_progress
+	if update_in_progress:
+		flask.make_response("Update already in progress", 409)
+	update_in_progress = True
+
 	logger = logging.getLogger("octoprint.plugins.softwareupdate")
 
 	update_script = s.get(["octoprint_update_script"])
@@ -145,6 +159,7 @@ def perform_update():
 
 	restart_command = s.get(["octoprint_restart_command"])
 	if restart_command is None:
+		update_in_progress = False
 		return flask.jsonify(dict(result="restart", stdout=p.stdout.text, stderr=p.stderr.text))
 
 	def restart_handler():
@@ -161,6 +176,7 @@ def perform_update():
 		else:
 			logger.debug("Restart stdout:\n%s" % p.stdout.text)
 			logger.debug("Restart stderr:\n%s" % p.stderr.text)
+		update_in_progress = False
 
 	import threading
 	restart_thread = threading.Thread(target=restart_handler)
