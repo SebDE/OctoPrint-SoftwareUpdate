@@ -11,11 +11,19 @@ import octoprint.plugin
 import flask
 import logging
 import os
-import sys
+import threading
 
-from . import github_release, git_commit
+from .version_checks import github_release, git_commit, github_commit, commandline, python_checker
+from .updaters import update_script, pip, python_updater
+from .exceptions import *
+from .util import execute
 
 from octoprint.server.util.flask import restricted_access
+from octoprint.util import dict_merge
+
+
+##~~ Plugin Metadata and Initialization
+
 
 __plugin_name__ = "softwareupdate"
 __plugin_version__ = "0.1"
@@ -29,197 +37,163 @@ def __plugin_init__():
 	__plugin_implementations__ = [_plugin]
 
 
+##~~ Settings
+
+
 default_settings = {
-	"checkout_folder": None,
-	"python_executable": sys.executable,
-	"git_executable": None,
+	"checks": {
+		"octoprint": {
+			"check_type": "github_release",
+			"user": "foosel",
+			"repo": "OctoPrint",
+			"update_script": "{{python}} \"{update_script}\" --python=\"{{python}}\" \"{{folder}}\" {{target}}".format(update_script=os.path.join(os.path.dirname(os.path.realpath(__file__)), "scripts", "update-octoprint.py")),
+			"restart": "octoprint"
+		},
+	},
 
-	"check_type": "release",
-
-	"pre_update_script": None,
-	"octoprint_update_script": "{{python}} \"{update_script}\" --python=\"{{python}}\" \"{{folder}}\" {{target}}".format(update_script=os.path.join(os.path.dirname(os.path.realpath(__file__)), "scripts", "update-octoprint.py")),
-	"post_update_script": None,
-	"octoprint_restart_command": None
+	"octoprint_restart_command": None,
+	"environment_restart_command": None
 }
+
+check_defaults = {
+	"check_type": None,
+	# version_check: commandline
+	"command": None,
+	# version_check: git_commit
+	"checkout_folder": None,
+	# version_check: github_commit & github_release
+	"user": None,
+	"repo": None,
+	"branch": None,
+	# update_type: update_script
+	"update_script": None,
+	"update_folder": None,
+	# update_type: pip
+	"pip": None,
+	"force_reinstall": None
+}
+
 s = octoprint.plugin.plugin_settings("softwareupdate", defaults=default_settings)
 
-
-update_in_progress = False
-
+##~~ Blueprint
 
 blueprint = flask.Blueprint("plugin.softwareupdate", __name__)
 
 @blueprint.route("/check", methods=["GET"])
 def check_for_update():
-	if "type" in flask.request.values:
-		check_type = flask.request.values["type"]
+	global _plugin
+
+	if "check" in flask.request.values:
+		check_targets = map(str.strip, flask.request.values["check"].split(","))
 	else:
-		check_type = s.get(["check_type"])
+		check_targets = None
 
-	if not check_type in ("release", "commit"):
-		flask.make_response("Unknown check type: %s" % check_type, 400)
-
-	information, update_available = _get_current_information(check_type)
-
-	return flask.jsonify(dict(status="updateAvailable" if update_available else "current", information=information))
+	try:
+		information, update_available, update_possible = _plugin.get_current_versions(check_targets=check_targets)
+		return flask.jsonify(dict(status="updatePossible" if update_available and update_possible else "updateAvailable" if update_available else "current", information=information))
+	except ConfigurationInvalid as e:
+		flask.make_response("Update not properly configured, can't proceed: %s" % e.message, 500)
 
 
 @blueprint.route("/update", methods=["POST"])
 @restricted_access
 def perform_update():
+	global _plugin
+
 	from octoprint.server import printer
 	if printer.isPrinting():
 		# do not update while a print job is running
 		flask.make_response("Printer is currently printing", 409)
 
-	global update_in_progress
-	if update_in_progress:
-		flask.make_response("Update already in progress", 409)
-	update_in_progress = True
-
-	logger = logging.getLogger("octoprint.plugins.softwareupdate")
-
-	update_script = s.get(["octoprint_update_script"])
-	pre_update_script = s.get(["pre_update_script"])
-	post_update_script = s.get(["post_update_script"])
-	if not update_script:
-		flask.make_response("Update script not properly configured, can't update", 500)
-
-	folder = s.get(["checkout_folder"])
-	if not folder:
-		flask.make_response("Checkout folder is not configured, can't update", 500)
-
-	python_executable = s.get(["python_executable"])
-
-	if "type" in flask.request.values:
-		check_type = flask.request.values["type"]
+	if "check" in flask.request.values:
+		check_targets = map(str.strip, flask.request.values["check"].split(","))
 	else:
-		check_type = s.get(["check_type"])
+		check_targets = None
 
-	if not check_type in ("release", "commit"):
-		flask.make_response("Unknown check type: %s" % check_type, 400)
-
-	information, update_available = _get_current_information(check_type)
-	if not update_available:
-		flask.make_response("No update available!", 400) # TODO other status code?
-
-	import sarge
-	p = None
-	update_stdout = ""
-	update_stderr = ""
-
-	if pre_update_script is not None:
-		logger.info("Running pre-update script...")
-		try:
-			p = sarge.run(pre_update_script, cwd=folder, stdout=sarge.Capture(), stderr=sarge.Capture())
-		except:
-			logger.exception("Error while executing pre update script")
-			if p is not None:
-				if p.stdout is not None:
-					logger.warn("Pre-Update stdout:\n%s" % p.stdout.text)
-				if p.stderr is not None:
-					logger.warn("Pre-Update stderr:\n%s" % p.stderr.text)
-	else:
-		update_stdout += p.stdout.text
-		update_stderr += p.stderr.text
-
-	logger.info("Starting update to %s..." % information["remote"]["value"])
-
-	update_command = update_script.format(python=python_executable, folder=folder, target=information["remote"]["value"])
+	# TODO check which exceptions can actually happen now
 	try:
-		p = sarge.run(update_command, cwd=folder, stdout=sarge.Capture(), stderr=sarge.Capture())
-	except:
-		logger.exception("Error while executing update script")
-		if p is not None and p.stderr is not None:
-			logger.warn("Update stdout:\n%s" % p.stdout.text)
-			logger.warn("Update stderr:\n%s" % p.stderr.text)
-		return flask.jsonify(dict(result="error", stdout=p.stdout.text if p is not None and p.stdout.text is not None else "", stderr=p.stderr.text if p is not None and p.stderr.text is not None else ""))
-	else:
-		update_stdout += p.stdout.text
-		update_stderr += p.stderr.text
-
-	if post_update_script is not None:
-		logger.info("Running post-update script...")
-		try:
-			p = sarge.run(post_update_script, cwd=folder, stdout=sarge.Capture(), stderr=sarge.Capture())
-		except:
-			logger.exception("Error while executing post update script")
-			if p is not None:
-				if p.stdout is not None:
-					logger.warn("Post-Update stdout:\n%s" % p.stdout.text)
-				if p.stderr is not None:
-					logger.warn("Post-Update stderr:\n%s" % p.stderr.text)
-	else:
-		update_stdout += p.stdout.text
-		update_stderr += p.stderr.text
-
-	logger.debug("Update stdout:\n%s" % update_stdout)
-	logger.debug("Update stderr:\n%s" % update_stderr)
-	logger.info("Update to %s successful!" % information["remote"]["value"])
-
-	restart_command = s.get(["octoprint_restart_command"])
-	if restart_command is None:
-		update_in_progress = False
-		return flask.jsonify(dict(result="restart", stdout=p.stdout.text, stderr=p.stderr.text))
-
-	def restart_handler():
-		logger.info("Restarting...")
-
-		p = None
-		try:
-			p = sarge.run(restart_command, stdout=sarge.Capture(), stderr=sarge.Capture())
-		except:
-			logger.exception("Error while restarting server")
-			if p is not None and p.stderr is not None:
-				logger.warn("Restart stdout:\n%s" % p.stdout.text)
-				logger.warn("Restart stderr:\n%s" % p.stderr.text)
-		else:
-			logger.debug("Restart stdout:\n%s" % p.stdout.text)
-			logger.debug("Restart stderr:\n%s" % p.stderr.text)
-		update_in_progress = False
-
-	import threading
-	restart_thread = threading.Thread(target=restart_handler)
-	restart_thread.daemon = False
-	restart_thread.start()
-
-	return flask.jsonify(dict(result="success", stdout=p.stdout.text, stderr=p.stderr.text))
+		result, target_results = _plugin.perform_updates(check_targets=check_targets)
+		return flask.jsonify(dict(result=result, details=target_results))
+	except ScriptError as e:
+		return flask.jsonify(dict(result="error", stdout=e.stdout, stderr=e.stderr))
+	except UpdateAlreadyInProgress:
+		flask.make_response("Update already in progress", 409)
+	except NoUpdateAvailable:
+		flask.make_response("No update available!", 409)
+	except ConfigurationInvalid as e:
+		flask.make_response("Update not properly configured, can't proceed: %s" % e.message, 500)
 
 
-def _get_current_information(check_type):
-	information = dict()
-	update_available = False
-
-	if check_type == "release":
-		# check for new release
-		release_information = github_release.get_release_information("foosel", "OctoPrint")
-		if release_information is not None:
-			information = release_information
-			if not github_release.is_local_current(release_information):
-				update_available = True
-
-	elif check_type == "commit":
-		# check for new commits
-		cwd = s.get(["checkout_folder"])
-		if not cwd:
-			flask.make_response("Checkout folder is not configured, can't check for updates", 500)
-
-		commit_information = git_commit.get_latest_commit(cwd, git_executable=s.get(["git_executable"]))
-		if commit_information is not None:
-			information = commit_information
-			if not git_commit.is_local_current(commit_information):
-				update_available = True
-
-	return information, update_available
+##~~ Plugin
 
 
 class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
                            octoprint.plugin.SettingsPlugin,
                            octoprint.plugin.AssetPlugin):
+	def __init__(self):
+		self._logger = logging.getLogger("octoprint.plugin.softwareupdate")
+
+		self._update_in_progress = False
+		self._configured_checks_mutex = threading.Lock()
+		self._configured_checks = None
+
+		#self._migrate_config()
+
+	def _migrate_config(self):
+
+		# TODO: proper configuration migration
+
+		all_settings = s.get([])
+		checks = s.get(["checks"])
+		if not "octoprint" in checks:
+			return
+
+		octoprint_check = checks["octoprint"]
+
+		if "checkout_folder" in all_settings:
+			octoprint_check["checkout_folder"] = all_settings["checkout_folder"]
+
+		if "check_type" in all_settings:
+			check_type = all_settings["check_type"]
+			if check_type == "commit":
+				check_type = "git_commit"
+			elif check_type == "release":
+				check_type = "github_release"
+			octoprint_check["type"] = check_type
+
+		if "pre_update_script" in all_settings:
+			octoprint_check["pre_update_script"] = all_settings["pre_update_script"]
+
+		if "post_update_script" in all_settings:
+			octoprint_check["post_update_script"] = all_settings["post_update_script"]
+
+		if "update_script" in all_settings:
+			octoprint_check["update_script"] = all_settings["update_script"]
+
+		s.set(["checks", "octoprint"], octoprint_check, defaults=check_defaults)
+
+	def _get_configured_checks(self):
+		with self._configured_checks_mutex:
+			if self._configured_checks is None:
+				self._configured_checks = s.get(["checks"], merged=True)
+				update_check_hooks = octoprint.plugin.plugin_manager().get_hooks("octoprint.plugin.softwareupdate.check_config")
+				for name, hook in update_check_hooks.items():
+					hook_checks = hook()
+
+					for key, data in hook_checks.items():
+						if key in self._configured_checks:
+							data = dict_merge(data, self._configured_checks[key])
+						self._configured_checks[key] = data
+
+			return self._configured_checks
+
+	#~~ BluePrint API
 
 	def get_blueprint(self):
 		global blueprint
 		return blueprint
+
+	#~~ Asset API
 
 	def get_asset_folder(self):
 		return os.path.join(os.path.dirname(os.path.realpath(__file__)), "static")
@@ -228,6 +202,244 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		return dict(
 			js=["js/softwareupdate.js"]
 		)
+
+	#~~ Updater
+
+	def get_current_versions(self, check_targets=None):
+		"""
+		Retrieves the current version information for all defined check_targets. Will retrieve information for all
+		available targets by default.
+
+		:param check_targets: an iterable defining the targets to check, if not supplied defaults to all targets
+		"""
+
+		checks = s.get(["checks"], merged=True)
+		if check_targets is None:
+			check_targets = checks.keys()
+
+		update_available = False
+		update_possible = False
+		information = dict()
+
+		for target, check in checks.items():
+			if not target in check_targets:
+				continue
+
+			try:
+				target_information, target_update_available, target_update_possible = self._get_current_version(target, check)
+				if target_information is None:
+					continue
+			except UnknownCheckType:
+				self._logger.warn("Unknown update check type for %s" % target)
+				continue
+
+			update_available = update_available or target_update_available
+			update_possible = update_possible or (target_update_possible and target_update_available)
+			information[target] = dict(updateAvailable=target_update_available, updatePossible=target_update_possible, information=target_information)
+			if "display" in check:
+				information[target]["displayName"] = check["display"]
+
+		return information, update_available, update_possible
+
+	def _get_current_version(self, target, check):
+		"""
+		Determines the current version information for one target based on its check configuration.
+		"""
+
+		information = dict()
+		update_available = False
+
+		try:
+			version_checker = self._get_version_checker(target, check)
+			information, is_current = version_checker.get_latest(target, check)
+			if information is not None and not is_current:
+				update_available = True
+		except UnknownCheckType:
+			self._logger.warn("Unknown check type %s for %s" % (check["type"], target))
+		except ConfigurationInvalid as e:
+			self._logger.warn("Could not check %s for updates: %s" % (target, e.message))
+
+		try:
+			updater = self._get_updater(target, check)
+			update_possible = updater.can_perform_update(target, check)
+		except UnknownUpdateType:
+			update_possible = False
+
+		return information, update_available, update_possible
+
+	def perform_updates(self, check_targets=None):
+		"""
+		Performs the updates for the given check_targets. Will update all possible targets by default.
+
+		:param check_targets: an iterable defining the targets to update, if not supplied defaults to all targets
+		"""
+
+		checks = s.get(["checks"], merged=True)
+		if check_targets is None:
+			check_targets = checks.keys()
+
+		restart_type = None
+
+		try:
+			self._update_in_progress = True
+
+			target_results = dict()
+			error = False
+
+			### iterate over all configured targets
+
+			for target, check in checks.items():
+				if "enabled" in check and not check["enabled"]:
+					continue
+
+				if not target in check_targets:
+					continue
+
+				target_error, target_result = self._perform_update(target, check)
+				error = error or target_error
+				if target_result is not None:
+					target_results[target] = target_result
+
+					if "restart" in check:
+						# if our update requires a restart we have to determine which type
+						if restart_type is None or (restart_type == "octoprint" and check["restart"] == "environment"):
+							restart_type = check["restart"]
+
+			if error:
+				# if there was an unignorable error, we just return error
+				result = "error"
+
+			else:
+				# otherwise the update process was a success, but we might still have to restart
+				result = "success"
+
+				if restart_type is not None and restart_type in ("octoprint", "environment"):
+					# one of our updates requires a restart of either type "octoprint" or "environment". Let's see if
+					# we can actually perform that
+					restart_command = s.get(["%s_restart_command" % restart_type])
+
+					if restart_command is not None:
+						# we have a restart command configured, we'll start a thread to execute it
+						import threading
+						restart_thread = threading.Thread(target=self._perform_restart, args=(restart_command,))
+						restart_thread.daemon = False
+						restart_thread.start()
+						result = "restarting"
+					else:
+						# we don't have this restart type configured, we'll have to display a message that a manual
+						# restart is needed
+						result = "restart_%s" % restart_type
+
+			return result, target_results
+
+		finally:
+			# we might have needed to update the config, so we'll save that now
+			s.save()
+
+			# also, we are now longer updating
+			self._update_in_progress = False
+
+	def _perform_update(self, target, check):
+		information, update_available, update_possible = self._get_current_version(target, check)
+
+		if not update_available:
+			return False, None
+
+		if not update_possible:
+			self._logger.warn("Cannot perform update for %s, update type is not fully configured" % target)
+			return False, None
+
+		# determine the target version to update to
+		target_version = information["remote"]["value"]
+		target_error = False
+
+		### The actual update procedure starts here...
+
+		try:
+			self._logger.info("Starting update of %s to %s..." % (target, target_version))
+			updater = self._get_updater(target, check)
+			if updater is None:
+				raise UnknownUpdateType()
+
+			update_result = updater.perform_update(target, check, target_version)
+			target_result = ("success", update_result)
+			self._logger.info("Update of %s to %s successful!" % (target, target_version))
+
+		except UnknownUpdateType:
+			self._logger.warn("Update of %s can not be performed, unknown update type" % target)
+			return False, None
+
+		except Exception as e:
+			self._logger.exception("Update of %s can not be performed" % target)
+			if not "ignorable" in check or not check["ignorable"]:
+				target_error = True
+
+			if isinstance(e, UpdateError):
+				target_result = ("failed", e.data)
+			else:
+				target_result = ("failed", None)
+
+		else:
+			# persist the new version if necessary for check type
+			if check["type"] == "github_commit":
+				checks = s.get(["checks"], merged=True)
+				checks[target]["current"] = target_version
+				s.set(["checks"], checks)
+
+		return target_error, target_result
+
+	def _perform_restart(self, restart_command):
+		"""
+		Performs a restart using the supplied restart_command.
+		"""
+
+		self._logger.info("Restarting...")
+		try:
+			execute(restart_command)
+		except ScriptError as e:
+			self._logger.exception("Error while restarting")
+			self._logger.warn("Restart stdout:\n%s" % e.stdout)
+			self._logger.warn("Restart stderr:\n%s" % e.stderr)
+
+	def _get_version_checker(self, target, check):
+		"""
+		Retrieves the version checker to use for given target and check configuration. Will raise an UnknownCheckType
+		if version checker cannot be determined.
+		"""
+
+		check_type = check["type"]
+		if check_type == "github_release":
+			if target == "octoprint":
+				from octoprint._version import get_versions
+				check["current"] = get_versions()["version"]
+			return github_release
+		elif check_type == "github_commit":
+			return github_commit
+		elif check_type == "git_commit":
+			return git_commit
+		elif check_type == "commandline":
+			return commandline
+		elif check_type == "python_checker":
+			return python_checker
+		else:
+			raise UnknownCheckType()
+
+	def _get_updater(self, target, check):
+		"""
+		Retrieves the updater for the given target and check configuration. Will raise an UnknownUpdateType if updater
+		cannot be determined.
+		"""
+
+		if "update_script" in check:
+			return update_script
+		elif "pip" in check:
+			return pip
+		elif "python_updater" in check:
+			return python_updater
+		else:
+			raise UnknownUpdateType()
+
+
 
 
 

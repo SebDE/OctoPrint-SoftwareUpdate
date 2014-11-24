@@ -29,14 +29,40 @@ $(function() {
                 type: "GET",
                 dataType: "json",
                 success: function(data) {
-                    if (data.status == "updateAvailable") {
+                    if (data.status == "updateAvailable" || data.status == "updatePossible") {
+                        var text = gettext("There are updates available for the following components:");
+
+                        // sort our keys
+                        var sorted_keys = _.sortBy(_.keys(data.information), function(item) {
+                            if (item == "octoprint") {
+                                return "";
+                            } else {
+                                return item
+                            }
+                        });
+
+                        text += "<ul>";
+                        _.each(sorted_keys, function(key) {
+                            var update_info = data.information[key];
+                            if (update_info.updateAvailable) {
+                                var displayName = key;
+                                if (update_info.hasOwnProperty("displayName")) {
+                                    displayName = update_info.displayName;
+                                }
+                                text += "<li>" + displayName + (update_info.updatePossible ? " <i class=\"icon-ok\"></i>" : "") + "</li>";
+                            }
+                        });
+                        text += "</ul>";
+
+                        text += "<small>" + gettext("Those components marked with <i class=\"icon-ok\"></i> can be updated directly.") + "</small>";
+
                         var options = {
                             title: gettext("Update Available"),
-                            text: gettext("A new version of OctoPrint is available!"),
+                            text: text,
                             hide: false
                         };
 
-                        if (self.loginState.isAdmin()) {
+                        if (data.status == "updatePossible" && self.loginState.isAdmin()) {
                             // if user is admin, add action buttons
                             options["confirm"] = {
                                 confirm: true,
@@ -96,8 +122,18 @@ $(function() {
 
                     if (data.result == "success") {
                         options = {
+                            title: gettext("Update successful!"),
+                            text: gettext("The update finished successfully."),
+                            type: "success",
+                            hide: false,
+                            buttons: {
+                                sticker: false
+                            }
+                        };
+                    } else if (data.result == "restarting") {
+                        options = {
                             title: gettext("Update successful, restarting!"),
-                            text: gettext("The update finished successfully and the server will now be restarted. The page will reload automatically."),
+                            text: gettext("The update finished successfully and the server will now be restarted."),
                             type: "success",
                             hide: false,
                             buttons: {
@@ -117,10 +153,15 @@ $(function() {
                             });
                             self.waitingForRestart = false;
                         }, 10000);
-                    } else if (data.result == "restart") {
+                    } else if (data.result == "restart_octoprint" || data.result == "restart_environment") {
+                        var text = gettext("The update finished successfully, please restart OctoPrint now.");
+                        if (data.result == "restart_environment") {
+                            text = gettext("The update finished successfully, please reboot the server now.");
+                        }
+
                         options = {
                             title: gettext("Update successful, restart required!"),
-                            text: gettext("The update finished successfully, please restart the server now."),
+                            text: text,
                             type: "success",
                             hide: false,
                             buttons: {
