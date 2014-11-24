@@ -23,9 +23,9 @@ from octoprint.util import dict_merge
 ##~~ Plugin Metadata and Initialization
 
 
-__plugin_name__ = "softwareupdate"
+__plugin_name__ = "SoftwareUpdate"
 __plugin_version__ = "0.1"
-__plugin_description__ = ""
+__plugin_description__ = "TODO"
 
 def __plugin_init__():
 	global _plugin
