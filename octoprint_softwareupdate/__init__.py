@@ -412,6 +412,9 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		if version checker cannot be determined.
 		"""
 
+		if not "type" in check:
+			raise exceptions.ConfigurationInvalid("no check type defined")
+
 		check_type = check["type"]
 		if check_type == "github_release":
 			if target == "octoprint":

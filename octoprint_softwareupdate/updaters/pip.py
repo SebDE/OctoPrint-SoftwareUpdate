@@ -18,8 +18,12 @@ def can_perform_update(target, check):
 
 def perform_update(target, check, target_version):
 	pip_args = ["install", check["pip"].format(target_version=target_version)]
-	if "force_reinstall" in check and check["force_reinstall"]:
-		pip_args += ["--upgrade", "--force-reinstall"]
-
 	_pip.main(pip_args)
+
+	if "force_reinstall" in check and check["force_reinstall"]:
+		# if force_reinstall is true, we need to install the package a second time, this time forcing its reinstall
+		# without forcing its dependencies too
+		pip_args += ["--ignore-installed", "--force-reinstall", "--no-deps"]
+		_pip.main(pip_args)
+
 	return "ok"
