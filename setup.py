@@ -23,7 +23,7 @@ def params():
 	url = "http://octoprint.org"
 	license = "AGPLv3"
 
-	packages = ["octoprint_softwareupdate"]
+	packages = setuptools.find_packages()
 	package_data = {"octoprint_softwareupdate": package_data_dirs('octoprint_softwareupdate', ['static', 'templates', 'scripts'])}
 
 	include_package_data = True
