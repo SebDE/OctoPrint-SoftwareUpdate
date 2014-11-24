@@ -13,7 +13,7 @@ from ..util import execute
 
 
 def can_perform_update(target, check):
-	return "checkout_folder" in check or "update_folder" in check
+	return "update_script" in check and ("checkout_folder" in check or "update_folder" in check)
 
 
 def perform_update(target, check, target_version):

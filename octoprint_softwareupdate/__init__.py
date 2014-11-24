@@ -13,10 +13,8 @@ import logging
 import os
 import threading
 
-from .version_checks import github_release, git_commit, github_commit, commandline, python_checker
-from .updaters import update_script, pip, python_updater
-from .exceptions import *
-from .util import execute
+from . import version_checks, updaters, exceptions, util
+
 
 from octoprint.server.util.flask import restricted_access
 from octoprint.util import dict_merge
@@ -32,6 +30,13 @@ __plugin_description__ = ""
 def __plugin_init__():
 	global _plugin
 	_plugin = SoftwareUpdatePlugin()
+
+	global __plugin_helpers__
+	__plugin_helpers__ = dict(
+		version_checks=version_checks,
+		updaters=updaters,
+		exceptions=exceptions
+	)
 
 	global __plugin_implementations__
 	__plugin_implementations__ = [_plugin]
@@ -91,7 +96,7 @@ def check_for_update():
 	try:
 		information, update_available, update_possible = _plugin.get_current_versions(check_targets=check_targets)
 		return flask.jsonify(dict(status="updatePossible" if update_available and update_possible else "updateAvailable" if update_available else "current", information=information))
-	except ConfigurationInvalid as e:
+	except exceptions.ConfigurationInvalid as e:
 		flask.make_response("Update not properly configured, can't proceed: %s" % e.message, 500)
 
 
@@ -114,13 +119,13 @@ def perform_update():
 	try:
 		result, target_results = _plugin.perform_updates(check_targets=check_targets)
 		return flask.jsonify(dict(result=result, details=target_results))
-	except ScriptError as e:
+	except exceptions.ScriptError as e:
 		return flask.jsonify(dict(result="error", stdout=e.stdout, stderr=e.stderr))
-	except UpdateAlreadyInProgress:
+	except exceptions.UpdateAlreadyInProgress:
 		flask.make_response("Update already in progress", 409)
-	except NoUpdateAvailable:
+	except exceptions.NoUpdateAvailable:
 		flask.make_response("No update available!", 409)
-	except ConfigurationInvalid as e:
+	except exceptions.ConfigurationInvalid as e:
 		flask.make_response("Update not properly configured, can't proceed: %s" % e.message, 500)
 
 
@@ -229,7 +234,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 				target_information, target_update_available, target_update_possible = self._get_current_version(target, check)
 				if target_information is None:
 					continue
-			except UnknownCheckType:
+			except exceptions.UnknownCheckType:
 				self._logger.warn("Unknown update check type for %s" % target)
 				continue
 
@@ -254,15 +259,15 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			information, is_current = version_checker.get_latest(target, check)
 			if information is not None and not is_current:
 				update_available = True
-		except UnknownCheckType:
+		except exceptions.UnknownCheckType:
 			self._logger.warn("Unknown check type %s for %s" % (check["type"], target))
-		except ConfigurationInvalid as e:
+		except exceptions.ConfigurationInvalid as e:
 			self._logger.warn("Could not check %s for updates: %s" % (target, e.message))
 
 		try:
 			updater = self._get_updater(target, check)
 			update_possible = updater.can_perform_update(target, check)
-		except UnknownUpdateType:
+		except exceptions.UnknownUpdateType:
 			update_possible = False
 
 		return information, update_available, update_possible
@@ -359,13 +364,13 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			self._logger.info("Starting update of %s to %s..." % (target, target_version))
 			updater = self._get_updater(target, check)
 			if updater is None:
-				raise UnknownUpdateType()
+				raise exceptions.UnknownUpdateType()
 
 			update_result = updater.perform_update(target, check, target_version)
 			target_result = ("success", update_result)
 			self._logger.info("Update of %s to %s successful!" % (target, target_version))
 
-		except UnknownUpdateType:
+		except exceptions.UnknownUpdateType:
 			self._logger.warn("Update of %s can not be performed, unknown update type" % target)
 			return False, None
 
@@ -374,7 +379,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			if not "ignorable" in check or not check["ignorable"]:
 				target_error = True
 
-			if isinstance(e, UpdateError):
+			if isinstance(e, exceptions.UpdateError):
 				target_result = ("failed", e.data)
 			else:
 				target_result = ("failed", None)
@@ -395,8 +400,8 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 		self._logger.info("Restarting...")
 		try:
-			execute(restart_command)
-		except ScriptError as e:
+			util.execute(restart_command)
+		except exceptions.ScriptError as e:
 			self._logger.exception("Error while restarting")
 			self._logger.warn("Restart stdout:\n%s" % e.stdout)
 			self._logger.warn("Restart stderr:\n%s" % e.stderr)
@@ -412,17 +417,17 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			if target == "octoprint":
 				from octoprint._version import get_versions
 				check["current"] = get_versions()["version"]
-			return github_release
+			return version_checks.github_release
 		elif check_type == "github_commit":
-			return github_commit
+			return version_checks.github_commit
 		elif check_type == "git_commit":
-			return git_commit
+			return version_checks.git_commit
 		elif check_type == "commandline":
-			return commandline
+			return version_checks.commandline
 		elif check_type == "python_checker":
-			return python_checker
+			return version_checks.python_checker
 		else:
-			raise UnknownCheckType()
+			raise exceptions.UnknownCheckType()
 
 	def _get_updater(self, target, check):
 		"""
@@ -431,13 +436,13 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		"""
 
 		if "update_script" in check:
-			return update_script
+			return updaters.update_script
 		elif "pip" in check:
-			return pip
+			return updaters.pip
 		elif "python_updater" in check:
-			return python_updater
+			return updaters.python_updater
 		else:
-			raise UnknownUpdateType()
+			raise exceptions.UnknownUpdateType()
 
 
 

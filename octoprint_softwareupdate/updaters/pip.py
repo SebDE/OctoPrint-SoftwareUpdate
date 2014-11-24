@@ -13,7 +13,7 @@ except:
 
 
 def can_perform_update(target, check):
-	return _pip is not None
+	return "pip" in check and _pip is not None
 
 
 def perform_update(target, check, target_version):
