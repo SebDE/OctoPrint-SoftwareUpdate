@@ -234,13 +234,13 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 				update_available = True
 		except exceptions.UnknownCheckType:
 			self._logger.warn("Unknown check type %s for %s" % (check["type"], target))
-		except exceptions.ConfigurationInvalid as e:
+		except:
 			self._logger.warn("Could not check %s for updates: %s" % (target, e.message))
 
 		try:
 			updater = self._get_updater(target, check)
 			update_possible = updater.can_perform_update(target, check)
-		except exceptions.UnknownUpdateType:
+		except:
 			update_possible = False
 
 		return information, update_available, update_possible
