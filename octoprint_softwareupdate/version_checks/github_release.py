@@ -35,7 +35,7 @@ def _get_latest_release(user, repo, include_prerelease=False):
 		return None
 
 	# sort by date
-	comp = lambda a, b: cmp(a["created_at"], b["created_at"])
+	comp = lambda a, b: cmp(a["published_at"], b["published_at"])
 	releases = sorted(releases, cmp=comp)
 
 	# latest release = last in list
