@@ -12,9 +12,14 @@ from ..exceptions import ConfigurationInvalid
 
 RELEASE_URL = "https://api.github.com/repos/{user}/{repo}/releases"
 
+logger = logging.getLogger("octoprint.plugins.softwareupdate.version_checks.github_commit")
 
 def _get_latest_release(user, repo, include_prerelease=False):
 	r = requests.get(RELEASE_URL.format(user=user, repo=repo))
+
+	from . import log_github_ratelimit
+	log_github_ratelimit(logger, r)
+
 	if not r.status_code == requests.codes.ok:
 		return None
 
@@ -66,7 +71,6 @@ def get_latest(target, check):
 		remote=dict(name=remote_name, value=remote_tag)
 	)
 
-	logger = logging.getLogger("octoprint.plugins.softwareupdate.version_checks.github_commit")
 	logger.debug("Target: %s, local: %s, remote: %s" % (target, check["current"], remote_tag))
 
 	return information, _is_current(information, compare_type)

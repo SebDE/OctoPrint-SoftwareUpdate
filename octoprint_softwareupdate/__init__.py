@@ -12,12 +12,14 @@ import flask
 import logging
 import os
 import threading
+import time
 
 from . import version_checks, updaters, exceptions, util
 
 
 from octoprint.server.util.flask import restricted_access
 from octoprint.util import dict_merge
+import octoprint.settings
 
 
 ##~~ Plugin Metadata and Initialization
@@ -48,7 +50,7 @@ def __plugin_init__():
 default_settings = {
 	"checks": {
 		"octoprint": {
-			"check_type": "github_release",
+			"type": "github_release",
 			"user": "foosel",
 			"repo": "OctoPrint",
 			"update_script": "{{python}} \"{update_script}\" --python=\"{{python}}\" \"{{folder}}\" {{target}}".format(update_script=os.path.join(os.path.dirname(os.path.realpath(__file__)), "scripts", "update-octoprint.py")),
@@ -57,7 +59,9 @@ default_settings = {
 	},
 
 	"octoprint_restart_command": None,
-	"environment_restart_command": None
+	"environment_restart_command": None,
+
+	"cache_ttl": 60,
 }
 
 check_defaults = {
@@ -93,8 +97,13 @@ def check_for_update():
 	else:
 		check_targets = None
 
+	if "force" in flask.request.values and flask.request.values["force"] in octoprint.settings.valid_boolean_trues:
+		force = True
+	else:
+		force=False
+
 	try:
-		information, update_available, update_possible = _plugin.get_current_versions(check_targets=check_targets)
+		information, update_available, update_possible = _plugin.get_current_versions(check_targets=check_targets, force=force)
 		return flask.jsonify(dict(status="updatePossible" if update_available and update_possible else "updateAvailable" if update_available else "current", information=information))
 	except exceptions.ConfigurationInvalid as e:
 		flask.make_response("Update not properly configured, can't proceed: %s" % e.message, 500)
@@ -134,6 +143,9 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		self._configured_checks = None
 
 		self._plugin_manager = None
+
+		self._version_cache = dict()
+		self._version_cache_ttl = s.getInt(["cache_ttl"]) * 60
 
 	def _get_configured_checks(self):
 		with self._configured_checks_mutex:
@@ -183,7 +195,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 	#~~ Updater
 
-	def get_current_versions(self, check_targets=None):
+	def get_current_versions(self, check_targets=None, force=False):
 		"""
 		Retrieves the current version information for all defined check_targets. Will retrieve information for all
 		available targets by default.
@@ -219,10 +231,15 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 		return information, update_available, update_possible
 
-	def _get_current_version(self, target, check):
+	def _get_current_version(self, target, check, force=False):
 		"""
 		Determines the current version information for one target based on its check configuration.
 		"""
+
+		if target in self._version_cache and not force:
+			timestamp, information, update_available, update_possible = self._version_cache[target]
+			if timestamp + self._version_cache_ttl >= time.time():
+				return information, update_available, update_possible
 
 		information = dict()
 		update_available = False
@@ -235,7 +252,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		except exceptions.UnknownCheckType:
 			self._logger.warn("Unknown check type %s for %s" % (check["type"], target))
 		except:
-			self._logger.warn("Could not check %s for updates: %s" % (target, e.message))
+			self._logger.exception("Could not check %s for updates" % target)
 
 		try:
 			updater = self._get_updater(target, check)
@@ -243,6 +260,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		except:
 			update_possible = False
 
+		self._version_cache[target] = (time.time(), information, update_available, update_possible)
 		return information, update_available, update_possible
 
 	def _send_client_message(self, message_type, data=None):

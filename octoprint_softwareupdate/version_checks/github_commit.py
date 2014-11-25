@@ -12,8 +12,14 @@ from ..exceptions import ConfigurationInvalid
 
 BRANCH_HEAD_URL = "https://api.github.com/repos/{user}/{repo}/git/refs/heads/{branch}"
 
+logger = logging.getLogger("octoprint.plugins.softwareupdate.version_checks.github_commit")
+
 def _get_latest_commit(user, repo, branch):
 	r = requests.get(BRANCH_HEAD_URL.format(user=user, repo=repo, branch=branch))
+
+	from . import log_github_ratelimit
+	log_github_ratelimit(logger, r)
+
 	if not r.status_code == requests.codes.ok:
 		return None
 
@@ -40,7 +46,6 @@ def get_latest(target, check):
 	)
 	is_current = check["current"] == remote_commit
 
-	logger = logging.getLogger("octoprint.plugins.softwareupdate.version_checks.github_commit")
 	logger.debug("Target: %s, local: %s, remote: %s" % (target, check["current"], remote_commit))
 
 	return information, is_current

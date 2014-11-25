@@ -34,8 +34,13 @@ $(function() {
         self.performCheck = function(force) {
             if (!self.loginState.isUser()) return;
 
+            var url = PLUGIN_BASEURL + "softwareupdate/check";
+            if (force) {
+                url += "?force=true";
+            }
+
             $.ajax({
-                url: PLUGIN_BASEURL + "softwareupdate/check",
+                url: url,
                 type: "GET",
                 dataType: "json",
                 success: function(data) {
