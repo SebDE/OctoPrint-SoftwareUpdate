@@ -246,6 +246,9 @@ $(function() {
                     hide: false
                 };
                 self._showPopup(options);
+
+                var delay = 5 + Math.floor(Math.random() * 5) + 1;
+                setTimeout(function() {location.reload(true);}, delay * 1000);
             }
         };
 
