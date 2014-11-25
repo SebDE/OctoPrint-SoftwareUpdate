@@ -37,7 +37,8 @@ def __plugin_init__():
 	__plugin_helpers__ = dict(
 		version_checks=version_checks,
 		updaters=updaters,
-		exceptions=exceptions
+		exceptions=exceptions,
+		util=util
 	)
 
 	global __plugin_implementations__
