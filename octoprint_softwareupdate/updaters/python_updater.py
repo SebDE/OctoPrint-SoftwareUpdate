@@ -11,4 +11,4 @@ def can_perform_update(target, check):
 
 
 def perform_update(target, check, target_version):
-	return check["python_updater"](target, check, target_version)
+	return check["python_updater"].perform_update(target, check, target_version)
