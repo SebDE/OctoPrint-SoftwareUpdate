@@ -19,7 +19,7 @@ def can_perform_update(target, check):
 
 
 def perform_update(target, check, target_version):
-	logger = logging.getLogger("octoprint.plugin.softwareupdate.updaters.pip")
+	logger = logging.getLogger("octoprint.plugins.softwareupdate.updaters.pip")
 
 	install_arg = check["pip"].format(target_version=target_version)
 

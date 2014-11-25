@@ -17,7 +17,7 @@ def can_perform_update(target, check):
 
 
 def perform_update(target, check, target_version):
-	logger = logging.getLogger("octoprint.plugin.softwareupdate.updaters.update_script")
+	logger = logging.getLogger("octoprint.plugins.softwareupdate.updaters.update_script")
 
 	if not can_perform_update(target, check):
 		raise ConfigurationInvalid("checkout_folder and update_folder are missing for update target %s, one is needed" % target)

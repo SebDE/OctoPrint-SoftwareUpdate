@@ -66,7 +66,7 @@ def get_latest(target, check):
 		remote=dict(name=remote_name, value=remote_tag)
 	)
 
-	logger = logging.getLogger("octoprint.plugin.softwareupdate.version_checks.github_commit")
+	logger = logging.getLogger("octoprint.plugins.softwareupdate.version_checks.github_commit")
 	logger.debug("Target: %s, local: %s, remote: %s" % (target, check["current"], remote_tag))
 
 	return information, _is_current(information, compare_type)
