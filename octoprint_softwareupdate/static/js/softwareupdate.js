@@ -10,6 +10,8 @@ $(function() {
         self.waitingForRestart = false;
         self.restartTimeout = undefined;
 
+        self.currentlyBeingUpdated = [];
+
         self.loginState.subscribe(function(event) {
             self.performCheck();
         });
@@ -21,7 +23,15 @@ $(function() {
             self.popup = new PNotify(options);
         };
 
-        self.performCheck = function() {
+        self._updatePopup = function(options) {
+            if (self.popup === undefined) {
+                self._showPopup(options);
+            } else {
+                self.popup.update(options);
+            }
+        };
+
+        self.performCheck = function(force) {
             if (!self.loginState.isUser()) return;
 
             $.ajax({
@@ -78,6 +88,12 @@ $(function() {
                         }
 
                         self._showPopup(options);
+                    } else if (data.status == "current" && force !== undefined && force) {
+                        self._showPopup({
+                            title: gettext("Everything is up-to-date"),
+                            hide: false,
+                            type: "success"
+                        });
                     }
                 }
             });
@@ -120,6 +136,9 @@ $(function() {
                 success: function(data) {
                     var options = undefined;
 
+                    self.currentlyBeingUpdated = data.checks;
+
+                    /*
                     if (data.result == "success") {
                         options = {
                             title: gettext("Update successful!"),
@@ -179,6 +198,7 @@ $(function() {
                             }
                         };
                     }
+                    */
 
                     if (options === undefined) return;
                     self._showPopup(options);
@@ -226,14 +246,128 @@ $(function() {
                     hide: false
                 };
                 self._showPopup(options);
-            } else {
-                self.performCheck();
             }
         };
 
-        self.onStartup = self.performCheck;
+        self.onDataUpdaterPluginMessage = function(plugin, data) {
+            if (plugin != "softwareupdate") {
+                return;
+            }
+
+            var messageType = data.type;
+            var messageData = data.data;
+
+            var options = undefined;
+
+            switch (messageType) {
+                case "updating": {
+                    console.log(JSON.stringify(messageData));
+                    self._updatePopup({
+                        text: _.sprintf(gettext("Now updating %(name)s to %(version)s"), {name: self.currentlyBeingUpdated[messageData.target], version: messageData.version})
+                    });
+                    break;
+                }
+                case "restarting": {
+                    console.log(JSON.stringify(messageData));
+
+                    options = {
+                        title: gettext("Update successful, restarting!"),
+                        text: gettext("The update finished successfully and the server will now be restarted."),
+                        type: "success",
+                        hide: false,
+                        buttons: {
+                            sticker: false
+                        }
+                    };
+
+                    self.waitingForRestart = true;
+                    self.restartTimeout = setTimeout(function() {
+                        self._showPopup({
+                            title: gettext("Restart failed"),
+                            test: gettext("The server apparently did not restart by itself, you'll have to do it manually. Please consult the log file on what went wrong."),
+                            type: "error",
+                            hide: false,
+                            buttons: {
+                                sticker: false
+                            }
+                        });
+                        self.waitingForRestart = false;
+                    }, 20000);
+
+                    break;
+                }
+                case "restart_manually": {
+                    console.log(JSON.stringify(messageData));
+
+                    var restartType = messageData.restart_type;
+                    var text = gettext("The update finished successfully, please restart OctoPrint now.");
+                    if (restartType == "environment") {
+                        text = gettext("The update finished successfully, please reboot the server now.");
+                    }
+
+                    options = {
+                        title: gettext("Update successful, restart required!"),
+                        text: text,
+                        type: "success",
+                        hide: false,
+                        buttons: {
+                            sticker: false
+                        }
+                    };
+                    break;
+                }
+                case "restart_failed": {
+                    var restartType = messageData.restart_type;
+                    var text = gettext("Restarting OctoPrint failed, please restart it manually. You might also want to consult the log file on what went wrong here.");
+                    if (restartType == "environment") {
+                        text = gettext("Rebooting the server failed, please reboot it manually. You might also want to consult the log file on what went wrong here.");
+                    }
+
+                    options = {
+                        title: gettext("Restart failed"),
+                        test: gettext("The server apparently did not restart by itself, you'll have to do it manually. Please consult the log file on what went wrong."),
+                        type: "error",
+                        hide: false,
+                        buttons: {
+                            sticker: false
+                        }
+                    };
+                    self.waitingForRestart = false;
+                    break;
+                }
+                case "success": {
+                    options = {
+                        title: gettext("Update successful!"),
+                        text: gettext("The update finished successfully."),
+                        type: "success",
+                        hide: false,
+                        buttons: {
+                            sticker: false
+                        }
+                    };
+                    break;
+                }
+                case "error": {
+                    self._showPopup({
+                        title: gettext("Update failed!"),
+                        text: gettext("The update did not finish successfully. Please consult the log for details."),
+                        type: "error",
+                        hide: false,
+                        buttons: {
+                            sticker: false
+                        }
+                    });
+                    break;
+                }
+            }
+
+            if (options != undefined) {
+                self._showPopup(options);
+            }
+        };
+
     }
 
     // view model class, parameters for constructor, container to bind to
-    ADDITIONAL_VIEWMODELS.push([SoftwareUpdateViewModel, ["loginStateViewModel", "printerStateViewModel"], undefined]);
+    ADDITIONAL_VIEWMODELS.push([SoftwareUpdateViewModel, ["loginStateViewModel", "printerStateViewModel"], document.getElementById("settings_plugin_softwareupdate_dialog")]);
 });

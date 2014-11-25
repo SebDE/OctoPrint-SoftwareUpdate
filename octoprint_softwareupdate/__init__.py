@@ -115,18 +115,8 @@ def perform_update():
 	else:
 		check_targets = None
 
-	# TODO check which exceptions can actually happen now
-	try:
-		result, target_results = _plugin.perform_updates(check_targets=check_targets)
-		return flask.jsonify(dict(result=result, details=target_results))
-	except exceptions.ScriptError as e:
-		return flask.jsonify(dict(result="error", stdout=e.stdout, stderr=e.stderr))
-	except exceptions.UpdateAlreadyInProgress:
-		flask.make_response("Update already in progress", 409)
-	except exceptions.NoUpdateAvailable:
-		flask.make_response("No update available!", 409)
-	except exceptions.ConfigurationInvalid as e:
-		flask.make_response("Update not properly configured, can't proceed: %s" % e.message, 500)
+	to_be_checked, checks = _plugin.perform_updates(check_targets=check_targets)
+	return flask.jsonify(dict(order=to_be_checked, checks=checks))
 
 
 ##~~ Plugin
@@ -134,13 +124,16 @@ def perform_update():
 
 class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
                            octoprint.plugin.SettingsPlugin,
-                           octoprint.plugin.AssetPlugin):
+                           octoprint.plugin.AssetPlugin,
+                           octoprint.plugin.TemplatePlugin):
 	def __init__(self):
 		self._logger = logging.getLogger("octoprint.plugin.softwareupdate")
 
 		self._update_in_progress = False
 		self._configured_checks_mutex = threading.Lock()
 		self._configured_checks = None
+
+		self._plugin_manager = None
 
 		#self._migrate_config()
 
@@ -181,7 +174,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		with self._configured_checks_mutex:
 			if self._configured_checks is None:
 				self._configured_checks = s.get(["checks"], merged=True)
-				update_check_hooks = octoprint.plugin.plugin_manager().get_hooks("octoprint.plugin.softwareupdate.check_config")
+				update_check_hooks = self.plugin_manager.get_hooks("octoprint.plugin.softwareupdate.check_config")
 				for name, hook in update_check_hooks.items():
 					hook_checks = hook()
 
@@ -191,6 +184,12 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 						self._configured_checks[key] = data
 
 			return self._configured_checks
+
+	@property
+	def plugin_manager(self):
+		if self._plugin_manager is None:
+			self._plugin_manager = octoprint.plugin.plugin_manager()
+		return self._plugin_manager
 
 	#~~ BluePrint API
 
@@ -207,6 +206,17 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		return dict(
 			js=["js/softwareupdate.js"]
 		)
+
+	##~~ TemplatePlugin API
+
+	def get_template_vars(self):
+		return dict(
+			_settings_menu_entry="SoftwareUpdate"
+		)
+
+	def get_template_folder(self):
+		import os
+		return os.path.join(os.path.dirname(os.path.realpath(__file__)), "templates")
 
 	#~~ Updater
 
@@ -272,6 +282,9 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 		return information, update_available, update_possible
 
+	def _send_client_message(self, message_type, data=None):
+		self.plugin_manager.send_plugin_message("softwareupdate", dict(type=message_type, data=data))
+
 	def perform_updates(self, check_targets=None):
 		"""
 		Performs the updates for the given check_targets. Will update all possible targets by default.
@@ -282,6 +295,19 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		checks = s.get(["checks"], merged=True)
 		if check_targets is None:
 			check_targets = checks.keys()
+		to_be_updated = sorted(set(check_targets) & set(checks.keys()))
+		if "octoprint" in to_be_updated:
+			to_be_updated.remove("octoprint")
+			tmp = ["octoprint"] + to_be_updated
+			to_be_updated = tmp
+
+		updater_thread = threading.Thread(target=self._update_worker, args=(checks, to_be_updated))
+		updater_thread.daemon = False
+		updater_thread.start()
+
+		return to_be_updated, dict((key, check["display"] if "display" in check else key) for key, check in checks.items() if key in to_be_updated)
+
+	def _update_worker(self, checks, check_targets):
 
 		restart_type = None
 
@@ -293,7 +319,11 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 			### iterate over all configured targets
 
-			for target, check in checks.items():
+			for target in check_targets:
+				if not target in checks:
+					continue
+				check = checks[target]
+
 				if "enabled" in check and not check["enabled"]:
 					continue
 
@@ -310,39 +340,35 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 						if restart_type is None or (restart_type == "octoprint" and check["restart"] == "environment"):
 							restart_type = check["restart"]
 
-			if error:
-				# if there was an unignorable error, we just return error
-				result = "error"
-
-			else:
-				# otherwise the update process was a success, but we might still have to restart
-				result = "success"
-
-				if restart_type is not None and restart_type in ("octoprint", "environment"):
-					# one of our updates requires a restart of either type "octoprint" or "environment". Let's see if
-					# we can actually perform that
-					restart_command = s.get(["%s_restart_command" % restart_type])
-
-					if restart_command is not None:
-						# we have a restart command configured, we'll start a thread to execute it
-						import threading
-						restart_thread = threading.Thread(target=self._perform_restart, args=(restart_command,))
-						restart_thread.daemon = False
-						restart_thread.start()
-						result = "restarting"
-					else:
-						# we don't have this restart type configured, we'll have to display a message that a manual
-						# restart is needed
-						result = "restart_%s" % restart_type
-
-			return result, target_results
-
 		finally:
 			# we might have needed to update the config, so we'll save that now
 			s.save()
 
 			# also, we are now longer updating
 			self._update_in_progress = False
+
+		if error:
+			# if there was an unignorable error, we just return error
+			self._send_client_message("error", dict(results=target_results))
+
+		else:
+			# otherwise the update process was a success, but we might still have to restart
+			if restart_type is not None and restart_type in ("octoprint", "environment"):
+				# one of our updates requires a restart of either type "octoprint" or "environment". Let's see if
+				# we can actually perform that
+				restart_command = s.get(["%s_restart_command" % restart_type])
+
+				if restart_command is not None:
+					try:
+						self._perform_restart(restart_command)
+					except exceptions.RestartFailed:
+						self._send_client_message("restart_failed", dict(restart_type=restart_type, results=target_results))
+				else:
+					# we don't have this restart type configured, we'll have to display a message that a manual
+					# restart is needed
+					self._send_client_message("restart_manually", dict(restart_type=restart_type, results=target_results))
+			else:
+				self._send_client_message("success", dict(results=target_results))
 
 	def _perform_update(self, target, check):
 		information, update_available, update_possible = self._get_current_version(target, check)
@@ -362,6 +388,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 		try:
 			self._logger.info("Starting update of %s to %s..." % (target, target_version))
+			self._send_client_message("updating", dict(target=target, version=target_version))
 			updater = self._get_updater(target, check)
 			if updater is None:
 				raise exceptions.UnknownUpdateType()
@@ -372,6 +399,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 		except exceptions.UnknownUpdateType:
 			self._logger.warn("Update of %s can not be performed, unknown update type" % target)
+			self._send_client_message("update_failed", dict(target=target, version=target_version, reason="Unknown update type"))
 			return False, None
 
 		except Exception as e:
@@ -381,8 +409,10 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 			if isinstance(e, exceptions.UpdateError):
 				target_result = ("failed", e.data)
+				self._send_client_message("update_failed", dict(target=target, version=target_version, reason=e.data))
 			else:
 				target_result = ("failed", None)
+				self._send_client_message("update_failed", dict(target=target, version=target_version, reason="unknown"))
 
 		else:
 			# persist the new version if necessary for check type
@@ -405,6 +435,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			self._logger.exception("Error while restarting")
 			self._logger.warn("Restart stdout:\n%s" % e.stdout)
 			self._logger.warn("Restart stderr:\n%s" % e.stderr)
+			raise exceptions.RestartFailed()
 
 	def _get_version_checker(self, target, check):
 		"""
@@ -446,8 +477,4 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			return updaters.python_updater
 		else:
 			raise exceptions.UnknownUpdateType()
-
-
-
-
 

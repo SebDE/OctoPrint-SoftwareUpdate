@@ -30,6 +30,9 @@ class ScriptError(Exception):
 		self.stdout = stdout
 		self.stderr = stderr
 
+class RestartFailed(Exception):
+	pass
+
 class ConfigurationInvalid(Exception):
 	pass
 
