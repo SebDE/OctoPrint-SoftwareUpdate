@@ -50,7 +50,7 @@ def get_latest(target, check):
 	if not "user" in check or not "repo" in check or not "current" in check:
 		raise ConfigurationInvalid("github_release update configuration for %s needs user, repo and current set" % target)
 
-	remote_name, remote_tag = _get_latest_release(check["user"], check["repo"])
+	remote_name, remote_tag = _get_latest_release(check["user"], check["repo"], include_prerelease=check["prerelease"] == True if "prerelease" in check else False)
 
 	information =dict(
 		local=check["current"],
