@@ -363,6 +363,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 				restart_command = s.get(["%s_restart_command" % restart_type])
 
 				if restart_command is not None:
+					self._send_client_message("restarting", dict(restart_type=restart_type, results=target_results))
 					try:
 						self._perform_restart(restart_command)
 					except exceptions.RestartFailed:
