@@ -37,13 +37,19 @@ def _get_latest_release(user, repo, include_prerelease=False):
 	return latest["name"], latest["tag_name"]
 
 
-def _is_current(release_information):
-	import semantic_version
+def _is_current(release_information, compare_type):
+	if not compare_type in ("semantic", "unequal"):
+		compare_type = "semantic"
 
-	local_version = semantic_version.Version(release_information["local"])
-	remote_version = semantic_version.Version(release_information["remote"]["value"])
+	if compare_type == "semantic":
+		import semantic_version
 
-	return local_version >= remote_version
+		local_version = semantic_version.Version(release_information["local"])
+		remote_version = semantic_version.Version(release_information["remote"]["value"])
+
+		return local_version >= remote_version
+	else:
+		return release_information["local"] == release_information["remote"]["value"]
 
 
 def get_latest(target, check):
@@ -51,9 +57,10 @@ def get_latest(target, check):
 		raise ConfigurationInvalid("github_release update configuration for %s needs user, repo and current set" % target)
 
 	remote_name, remote_tag = _get_latest_release(check["user"], check["repo"], include_prerelease=check["prerelease"] == True if "prerelease" in check else False)
+	compare_type = check["release_compare"] if "release_compare" in check else "semantic"
 
 	information =dict(
 		local=check["current"],
 		remote=dict(name=remote_name, value=remote_tag)
 	)
-	return information, _is_current(information)
+	return information, _is_current(information, compare_type)
