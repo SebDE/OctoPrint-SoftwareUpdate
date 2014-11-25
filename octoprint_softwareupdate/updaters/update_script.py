@@ -56,7 +56,7 @@ def perform_update(target, check, target_version):
 		logger.exception("Target: %s, error while executing update script, got returncode %r" % (target, e.returncode))
 		logger.warn("Target: %s, update stdout:\n%s" % (target, e.stdout))
 		logger.warn("Target: %s, update stderr:\n%s" % (target, e.stderr))
-		raise UpdateError((e.stdout, e.stderr))
+		raise UpdateError("Error while executing update script for %s", (e.stdout, e.stderr))
 
 	### post update
 

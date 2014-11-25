@@ -19,13 +19,12 @@ class UnknownCheckType(Exception):
 	pass
 
 class UpdateError(Exception):
-	def __init__(self, data, *args, **kwargs):
-		Exception.__init__(*args, **kwargs)
+	def __init__(self, message, data):
+		self.message = message
 		self.data = data
 
 class ScriptError(Exception):
-	def __init__(self, returncode, stdout, stderr, *args, **kwargs):
-		Exception.__init__(*args, **kwargs)
+	def __init__(self, returncode, stdout, stderr):
 		self.returncode = returncode
 		self.stdout = stdout
 		self.stderr = stderr
