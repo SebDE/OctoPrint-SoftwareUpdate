@@ -17,7 +17,7 @@ def can_perform_update(target, check):
 
 
 def perform_update(target, check, target_version):
-	logger = logging.getLogger("octoprint.plugin.softwareupdate.updater.update_script")
+	logger = logging.getLogger("octoprint.plugin.softwareupdate.updaters.update_script")
 
 	if not can_perform_update(target, check):
 		raise ConfigurationInvalid("checkout_folder and update_folder are missing for update target %s, one is needed" % target)
@@ -33,44 +33,46 @@ def perform_update(target, check, target_version):
 	### pre update
 
 	if pre_update_script is not None:
-		logger.info("Running pre-update script...")
+		logger.debug("Target: %s, running pre-update script: %s" % (target, pre_update_script))
 		try:
 			returncode, stdout, stderr = execute(pre_update_script, cwd=folder)
 			update_stdout += stdout
 			update_stderr += stderr
 		except ScriptError as e:
-			logger.exception("Error while executing pre update script, got returncode %r" % e.returncode)
-			logger.warn("Pre-Update stdout:\n%s" % e.stdout)
-			logger.warn("Pre-Update stderr:\n%s" % e.stderr)
+			logger.exception("Target: %s, error while executing pre update script, got returncode %r" % (target, e.returncode))
+			logger.warn("Target: %s, pre-update stdout:\n%s" % (target, e.stdout))
+			logger.warn("Target: %s, pre-update stderr:\n%s" % (target, e.stderr))
 
 	### update
 
 	try:
 		update_command = update_script.format(python=sys.executable, folder=folder, target=target_version)
+
+		logger.debug("Target %s, running update script: %s" % (target, update_command))
 		returncode, stdout, stderr = execute(update_command, cwd=folder)
 		update_stdout += stdout
 		update_stderr += stderr
 	except ScriptError as e:
-		logger.exception("Error while executing update script, got returncode %r" % e.returncode)
-		logger.warn("Update stdout:\n%s" % e.stdout)
-		logger.warn("Update stderr:\n%s" % e.stderr)
+		logger.exception("Target: %s, error while executing update script, got returncode %r" % (target, e.returncode))
+		logger.warn("Target: %s, update stdout:\n%s" % (target, e.stdout))
+		logger.warn("Target: %s, update stderr:\n%s" % (target, e.stderr))
 		raise UpdateError((e.stdout, e.stderr))
 
 	### post update
 
 	if post_update_script is not None:
-		logger.info("Running post-update script...")
+		logger.debug("Target: %s, running post-update script %s..." % (target, post_update_script))
 		try:
 			returncode, stdout, stderr = execute(post_update_script, cwd=folder)
 			update_stdout += stdout
 			update_stderr += stderr
 		except ScriptError as e:
-			logger.exception("Error while executing post update script, got returncode %r" % e.returncode)
-			logger.warn("Post-Update stdout:\n%s" % e.stdout)
-			logger.warn("Post-Update stderr:\n%s" % e.stderr)
+			logger.exception("Target: %s, error while executing post update script, got returncode %r" % (target, e.returncode))
+			logger.warn("Target: %s, post-update stdout:\n%s" % (target, e.stdout))
+			logger.warn("Target: %s, post-update stderr:\n%s" % (target, e.stderr))
 
-	logger.debug("Update stdout:\n%s" % update_stdout)
-	logger.debug("Update stderr:\n%s" % update_stderr)
+	logger.debug("Target: %s, update stdout:\n%s" % (target, update_stdout))
+	logger.debug("Target: %s, update stderr:\n%s" % (target, update_stderr))
 
 	### result
 

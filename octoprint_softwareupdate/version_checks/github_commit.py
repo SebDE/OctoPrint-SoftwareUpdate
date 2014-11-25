@@ -6,6 +6,8 @@ __license__ = 'GNU Affero General Public License http://www.gnu.org/licenses/agp
 __copyright__ = "Copyright (C) 2014 The OctoPrint Project - Released under terms of the AGPLv3 License"
 
 import requests
+import logging
+
 from ..exceptions import ConfigurationInvalid
 
 BRANCH_HEAD_URL = "https://api.github.com/repos/{user}/{repo}/git/refs/heads/{branch}"
@@ -37,6 +39,9 @@ def get_latest(target, check):
 		remote=dict(name="Commit %s" % remote_commit, value=remote_commit)
 	)
 	is_current = check["current"] == remote_commit
+
+	logger = logging.getLogger("octoprint.plugin.softwareupdate.version_checks.github_commit")
+	logger.debug("Target: %s, local: %s, remote: %s" % (target, check["current"], remote_commit))
 
 	return information, is_current
 

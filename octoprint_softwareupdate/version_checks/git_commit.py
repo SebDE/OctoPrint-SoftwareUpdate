@@ -9,6 +9,7 @@ __copyright__ = "Copyright (C) 2014 The OctoPrint Project - Released under terms
 import errno
 import subprocess
 import sys
+import logging
 
 from ..exceptions import ConfigurationInvalid
 
@@ -80,5 +81,8 @@ def get_latest(target, check):
 			remote=dict(name="Commit %s" % remote_commit, value=remote_commit)
 		)
 		is_current = local_commit == remote_commit
+
+	logger = logging.getLogger("octoprint.plugin.softwareupdate.version_checks.git_commit")
+	logger.debug("Target: %s, local: %s, remote: %s" % (target, local_commit, remote_commit))
 
 	return information, is_current
