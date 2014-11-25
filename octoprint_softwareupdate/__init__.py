@@ -127,7 +127,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
                            octoprint.plugin.AssetPlugin,
                            octoprint.plugin.TemplatePlugin):
 	def __init__(self):
-		self._logger = logging.getLogger("octoprint.plugin.softwareupdate")
+		self._logger = logging.getLogger("octoprint.plugins.softwareupdate")
 
 		self._update_in_progress = False
 		self._configured_checks_mutex = threading.Lock()
@@ -135,49 +135,12 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 		self._plugin_manager = None
 
-		#self._migrate_config()
-
-	def _migrate_config(self):
-
-		# TODO: proper configuration migration
-
-		all_settings = s.get([])
-		checks = s.get(["checks"])
-		if not "octoprint" in checks:
-			return
-
-		octoprint_check = checks["octoprint"]
-
-		if "checkout_folder" in all_settings:
-			octoprint_check["checkout_folder"] = all_settings["checkout_folder"]
-
-		if "check_type" in all_settings:
-			check_type = all_settings["check_type"]
-			if check_type == "commit":
-				check_type = "git_commit"
-			elif check_type == "release":
-				check_type = "github_release"
-			octoprint_check["type"] = check_type
-
-		if "pre_update_script" in all_settings:
-			octoprint_check["pre_update_script"] = all_settings["pre_update_script"]
-
-		if "post_update_script" in all_settings:
-			octoprint_check["post_update_script"] = all_settings["post_update_script"]
-
-		if "update_script" in all_settings:
-			octoprint_check["update_script"] = all_settings["update_script"]
-
-		s.set(["checks", "octoprint"], octoprint_check, defaults=check_defaults)
-
 	def _get_configured_checks(self):
 		with self._configured_checks_mutex:
 			if self._configured_checks is None:
 				self._configured_checks = s.get(["checks"], merged=True)
 				update_check_hooks = self.plugin_manager.get_hooks("octoprint.plugin.softwareupdate.check_config")
-				for name, hook in update_check_hooks.items():
-					hook_checks = hook()
-
+				for name, hook_checks in update_check_hooks.items():
 					for key, data in hook_checks.items():
 						if key in self._configured_checks:
 							data = dict_merge(data, self._configured_checks[key])
@@ -228,7 +191,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		:param check_targets: an iterable defining the targets to check, if not supplied defaults to all targets
 		"""
 
-		checks = s.get(["checks"], merged=True)
+		checks = self._get_configured_checks()
 		if check_targets is None:
 			check_targets = checks.keys()
 
@@ -292,7 +255,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		:param check_targets: an iterable defining the targets to update, if not supplied defaults to all targets
 		"""
 
-		checks = s.get(["checks"], merged=True)
+		checks = self._get_configured_checks()
 		if check_targets is None:
 			check_targets = checks.keys()
 		to_be_updated = sorted(set(check_targets) & set(checks.keys()))
@@ -423,8 +386,10 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			# persist the new version if necessary for check type
 			if check["type"] == "github_commit":
 				checks = s.get(["checks"], merged=True)
-				checks[target]["current"] = target_version
-				s.set(["checks"], checks)
+				if target in checks:
+					# TODO make this cleaner, right now it saves too much to disk
+					checks[target]["current"] = target_version
+					s.set(["checks"], checks)
 
 		return target_error, target_result
 
