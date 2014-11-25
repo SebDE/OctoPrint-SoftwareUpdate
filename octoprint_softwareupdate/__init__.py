@@ -216,7 +216,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 				continue
 
 			try:
-				target_information, target_update_available, target_update_possible = self._get_current_version(target, check)
+				target_information, target_update_available, target_update_possible = self._get_current_version(target, check, force=force)
 				if target_information is None:
 					continue
 			except exceptions.UnknownCheckType:
