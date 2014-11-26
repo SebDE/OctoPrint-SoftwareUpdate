@@ -1,4 +1,8 @@
 <div id="settings_plugin_softwareupdate_dialog" data-bind="allowBindings: true">
-    <button class="btn btn-block" data-bind="click: function() { $root.performCheck(true); }">{{ _('Force check for update') }}</button>
-    <button class="btn btn-block" data-bind="click: $root.performUpdate">{{ _('Force update') }}</button>
+    <h3>Manual check</h3>
+    <button class="btn btn-block" data-bind="click: function() { $root.performCheck(true, false); }">{{ _('Check for update now') }}</button>
+
+    <h3>Force check for update or update</h3>
+    <button class="btn btn-block" data-bind="click: function() { $root.performCheck(true, true); }">{{ _('Force check for update (overrides cache used for update checks)') }}</button>
+    <button class="btn btn-block btn-danger" data-bind="click: function() { $root.update(true); }">{{ _('Force update now (even if no new versions are available)') }}</button>
 </div>

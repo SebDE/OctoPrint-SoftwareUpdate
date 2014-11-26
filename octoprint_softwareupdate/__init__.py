@@ -120,12 +120,23 @@ def perform_update():
 		# do not update while a print job is running
 		flask.make_response("Printer is currently printing", 409)
 
-	if "check" in flask.request.values:
-		check_targets = map(str.strip, flask.request.values["check"].split(","))
+	if not "application/json" in flask.request.headers["Content-Type"]:
+		flask.make_response("Expected content-type JSON", 400)
+
+	json_data = flask.request.json
+
+	if "check" in json_data:
+		check_targets = map(str.strip, json_data["check"])
 	else:
 		check_targets = None
 
-	to_be_checked, checks = _plugin.perform_updates(check_targets=check_targets)
+	if "force" in json_data:
+		from octoprint.settings import valid_boolean_trues
+		force = (json_data["force"] in valid_boolean_trues)
+	else:
+		force = False
+
+	to_be_checked, checks = _plugin.perform_updates(check_targets=check_targets, force=force)
 	return flask.jsonify(dict(order=to_be_checked, checks=checks))
 
 
@@ -252,14 +263,16 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 				update_available = True
 		except exceptions.UnknownCheckType:
 			self._logger.warn("Unknown check type %s for %s" % (check["type"], target))
+			update_possible = False
 		except:
 			self._logger.exception("Could not check %s for updates" % target)
-
-		try:
-			updater = self._get_updater(target, check)
-			update_possible = updater.can_perform_update(target, check)
-		except:
 			update_possible = False
+		else:
+			try:
+				updater = self._get_updater(target, check)
+				update_possible = updater.can_perform_update(target, check)
+			except:
+				update_possible = False
 
 		self._version_cache[target] = (time.time(), information, update_available, update_possible)
 		return information, update_available, update_possible
@@ -267,7 +280,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 	def _send_client_message(self, message_type, data=None):
 		self.plugin_manager.send_plugin_message("softwareupdate", dict(type=message_type, data=data))
 
-	def perform_updates(self, check_targets=None):
+	def perform_updates(self, check_targets=None, force=False):
 		"""
 		Performs the updates for the given check_targets. Will update all possible targets by default.
 
@@ -283,13 +296,13 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			tmp = ["octoprint"] + to_be_updated
 			to_be_updated = tmp
 
-		updater_thread = threading.Thread(target=self._update_worker, args=(checks, to_be_updated))
+		updater_thread = threading.Thread(target=self._update_worker, args=(checks, to_be_updated, force))
 		updater_thread.daemon = False
 		updater_thread.start()
 
 		return to_be_updated, dict((key, check["display"] if "display" in check else key) for key, check in checks.items() if key in to_be_updated)
 
-	def _update_worker(self, checks, check_targets):
+	def _update_worker(self, checks, check_targets, force):
 
 		restart_type = None
 
@@ -312,7 +325,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 				if not target in check_targets:
 					continue
 
-				target_error, target_result = self._perform_update(target, check)
+				target_error, target_result = self._perform_update(target, check, force)
 				error = error or target_error
 				if target_result is not None:
 					target_results[target] = target_result
@@ -357,10 +370,10 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			else:
 				self._send_client_message("success", dict(results=target_results))
 
-	def _perform_update(self, target, check):
+	def _perform_update(self, target, check, force):
 		information, update_available, update_possible = self._get_current_version(target, check)
 
-		if not update_available:
+		if not update_available and not force:
 			return False, None
 
 		if not update_possible:

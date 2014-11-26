@@ -31,7 +31,7 @@ $(function() {
             }
         };
 
-        self.performCheck = function(force) {
+        self.performCheck = function(showIfNothingNew, force) {
             if (!self.loginState.isUser()) return;
 
             var url = PLUGIN_BASEURL + "softwareupdate/check";
@@ -93,7 +93,7 @@ $(function() {
                         }
 
                         self._showPopup(options);
-                    } else if (data.status == "current" && force !== undefined && force) {
+                    } else if (data.status == "current" && showIfNothingNew) {
                         self._showPopup({
                             title: gettext("Everything is up-to-date"),
                             hide: false,
@@ -104,7 +104,7 @@ $(function() {
             });
         };
 
-        self.performUpdate = function() {
+        self.performUpdate = function(force) {
             self.updateInProgress = true;
 
             var options = {
@@ -124,10 +124,9 @@ $(function() {
                 type: "POST",
                 dataType: "json",
                 contentType: "application/json; charset=UTF-8",
-                complete: function() {
-                    self.updateInProgress = false;
-                },
+                data: JSON.stringify({force: (force == true)}),
                 error: function() {
+                    self.updateInProgress = false;
                     self._showPopup({
                         title: gettext("Update not started!"),
                         text: gettext("The update could not be started. Is it already active? Please consult the log for details."),
@@ -139,80 +138,15 @@ $(function() {
                     });
                 },
                 success: function(data) {
-                    var options = undefined;
-
                     self.currentlyBeingUpdated = data.checks;
-
-                    /*
-                    if (data.result == "success") {
-                        options = {
-                            title: gettext("Update successful!"),
-                            text: gettext("The update finished successfully."),
-                            type: "success",
-                            hide: false,
-                            buttons: {
-                                sticker: false
-                            }
-                        };
-                    } else if (data.result == "restarting") {
-                        options = {
-                            title: gettext("Update successful, restarting!"),
-                            text: gettext("The update finished successfully and the server will now be restarted."),
-                            type: "success",
-                            hide: false,
-                            buttons: {
-                                sticker: false
-                            }
-                        };
-                        self.waitingForRestart = true;
-                        self.restartTimeout = setTimeout(function() {
-                            self._showPopup({
-                                title: gettext("Restart failed"),
-                                test: gettext("The server apparently did not restart by itself, you'll have to do it manually. Please consult the log file on what went wrong."),
-                                type: "error",
-                                hide: false,
-                                buttons: {
-                                    sticker: false
-                                }
-                            });
-                            self.waitingForRestart = false;
-                        }, 10000);
-                    } else if (data.result == "restart_octoprint" || data.result == "restart_environment") {
-                        var text = gettext("The update finished successfully, please restart OctoPrint now.");
-                        if (data.result == "restart_environment") {
-                            text = gettext("The update finished successfully, please reboot the server now.");
-                        }
-
-                        options = {
-                            title: gettext("Update successful, restart required!"),
-                            text: text,
-                            type: "success",
-                            hide: false,
-                            buttons: {
-                                sticker: false
-                            }
-                        };
-                    } else {
-                        options = {
-                            title: gettext("Update failed!"),
-                            text: gettext("The update failed, please consult the log files."),
-                            type: "error",
-                            hide: false,
-                            buttons: {
-                                sticker: false
-                            }
-                        };
-                    }
-                    */
-
-                    if (options === undefined) return;
-                    self._showPopup(options);
                 }
             });
         };
 
-        self.update = function() {
+        self.update = function(force) {
             if (self.updateInProgress) return;
+
+            force = (force == true);
 
             if (self.printerState.isPrinting()) {
                 new PNotify({
@@ -226,7 +160,7 @@ $(function() {
                 $("#confirmation_dialog .confirmation_dialog_acknowledge").click(function(e) {
                     e.preventDefault();
                     $("#confirmation_dialog").modal("hide");
-                    self.performUpdate();
+                    self.performUpdate(force);
                 });
                 $("#confirmation_dialog").modal("show");
             }
@@ -251,6 +185,7 @@ $(function() {
                     hide: false
                 };
                 self._showPopup(options);
+                self.updateInProgress = false;
 
                 var delay = 5 + Math.floor(Math.random() * 5) + 1;
                 setTimeout(function() {location.reload(true);}, delay * 1000);
@@ -270,8 +205,14 @@ $(function() {
             switch (messageType) {
                 case "updating": {
                     console.log(JSON.stringify(messageData));
+
+                    var name = self.currentlyBeingUpdated[messageData.target];
+                    if (name == undefined) {
+                        name = messageData.target;
+                    }
+
                     self._updatePopup({
-                        text: _.sprintf(gettext("Now updating %(name)s to %(version)s"), {name: self.currentlyBeingUpdated[messageData.target], version: messageData.version})
+                        text: _.sprintf(gettext("Now updating %(name)s to %(version)s"), {name: name, version: messageData.version})
                     });
                     break;
                 }
@@ -322,6 +263,7 @@ $(function() {
                             sticker: false
                         }
                     };
+                    self.updateInProgress = false;
                     break;
                 }
                 case "restart_failed": {
@@ -341,6 +283,7 @@ $(function() {
                         }
                     };
                     self.waitingForRestart = false;
+                    self.updateInProgress = false;
                     break;
                 }
                 case "success": {
@@ -353,6 +296,7 @@ $(function() {
                             sticker: false
                         }
                     };
+                    self.updateInProgress = false;
                     break;
                 }
                 case "error": {
@@ -365,6 +309,7 @@ $(function() {
                             sticker: false
                         }
                     });
+                    self.updateInProgress = false;
                     break;
                 }
             }
