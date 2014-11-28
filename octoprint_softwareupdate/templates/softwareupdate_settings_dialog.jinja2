@@ -1,4 +1,9 @@
 <div id="settings_plugin_softwareupdate_dialog" data-bind="allowBindings: true">
+    <h3>Current versions</h3>
+    <ul data-bind="foreach: versions.paginatedItems()">
+        <li><span data-bind="text: name"></span>: <span data-bind="text: version"></span> <span data-bind="visible: updateAvailable">{{ _('(update available)') }}</span></li>
+    </ul>
+
     <h3>Manual check</h3>
     <button class="btn btn-block" data-bind="click: function() { $root.performCheck(true, false); }">{{ _('Check for update now') }}</button>
 
