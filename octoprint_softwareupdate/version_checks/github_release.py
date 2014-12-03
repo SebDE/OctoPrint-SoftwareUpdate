@@ -51,7 +51,7 @@ def _is_current(release_information, compare_type):
 	if compare_type == "semantic":
 		import semantic_version
 
-		local_version = semantic_version.Version(release_information["local"])
+		local_version = semantic_version.Version(release_information["local"]["value"])
 		remote_version = semantic_version.Version(release_information["remote"]["value"])
 
 		return local_version >= remote_version
