@@ -235,11 +235,15 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 				self._logger.warn("Unknown update check type for %s" % target)
 				continue
 
+			target_information = dict_merge(dict(local=dict(name="unknown", value="unknown"), remote=dict(name="unknown", value="unknown")), target_information)
+
 			update_available = update_available or target_update_available
 			update_possible = update_possible or (target_update_possible and target_update_available)
 			information[target] = dict(updateAvailable=target_update_available, updatePossible=target_update_possible, information=target_information)
+
 			if "displayName" in check:
 				information[target]["displayName"] = check["displayName"]
+
 			if "displayVersion" in check:
 				from octoprint._version import get_versions
 				octoprint_version = get_versions()["version"]
