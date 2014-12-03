@@ -69,28 +69,45 @@ def _python(args, cwd, python_executable):
 
 
 def update_source(git_executable, folder, target, force=False):
+	print(">>> Running: git diff --shortstat")
+	returncode, stdout = _git(["diff", "--shortstat"], folder, git_executable=git_executable)
+	if returncode != 0:
+		raise RuntimeError("Could not update, \"git stash\" failed with returncode %d: %s" % (returncode, stdout))
+	if stdout and stdout.strip():
+		# we got changes in the working tree, maybe from the user, so we'll now rescue those into a patch
+		import time
+		import os
+		timestamp = time.strftime("%Y%m%d%H%M")
+		patch = os.path.join(folder, "%s-preupdate.patch" % timestamp)
+
+		print(">>> Running: git diff and saving output to %s" % timestamp)
+		returncode, stdout = _git(["diff"], folder, git_executable=git_executable)
+		if returncode != 0:
+			raise RuntimeError("Could not update, installation directory was dirty and state could not be persisted as a patch to %s" % patch)
+
+		with open(patch, "wb") as f:
+			f.write(stdout)
+
+		print(">>> Running: git reset --hard")
+		returncode, stdout = _git(["reset", "--hard"], folder, git_executable=git_executable)
+		if returncode != 0:
+			raise RuntimeError("Could not update, \"git reset --hard\" failed with returncode %d: %s" % (returncode, stdout))
+
 	print(">>> Running: git pull")
 	returncode, stdout = _git(["pull"], folder, git_executable=git_executable)
 	if returncode != 0:
 		raise RuntimeError("Could not update, \"git pull\" failed with returncode %d: %s" % (returncode, stdout))
 	print(stdout)
 
-	print(">>> Running: git stash")
-	returncode, stdout = _git(["stash"], folder, git_executable=git_executable)
-	if returncode != 0:
-		raise RuntimeError("Could not update, \"git stash\" failed with returncode %d: %s" % (returncode, stdout))
-	print(stdout)
-
-	reset_command = ["reset"]
 	if force:
-		reset_command += ["--hard"]
-	reset_command += [target]
+		reset_command = ["reset"]
+		reset_command += [target]
 
-	print(">>> Running: git %s" % " ".join(reset_command))
-	returncode, stdout = _git(reset_command, folder, git_executable=git_executable)
-	if returncode != 0:
-		raise RuntimeError("Error while updating, \"git %s\" failed with returncode %d: %s" % (" ".join(reset_command), returncode, stdout))
-	print(stdout)
+		print(">>> Running: git %s" % " ".join(reset_command))
+		returncode, stdout = _git(reset_command, folder, git_executable=git_executable)
+		if returncode != 0:
+			raise RuntimeError("Error while updating, \"git %s\" failed with returncode %d: %s" % (" ".join(reset_command), returncode, stdout))
+		print(stdout)
 
 
 def install_source(python_executable, folder):
@@ -118,7 +135,7 @@ def parse_arguments():
 	parser.add_argument("--python", action="store", type=str, dest="python_executable",
 	                    help="Specify python executable to use")
 	parser.add_argument("--force", action="store_true", dest="force",
-	                    help="Set this to force the update to overwrite and local changes")
+	                    help="Set this to force the update to only the specified version (nothing newer)")
 	parser.add_argument("folder", type=str,
 	                    help="Specify the base folder of the OctoPrint installation to update")
 	parser.add_argument("target", type=str,
