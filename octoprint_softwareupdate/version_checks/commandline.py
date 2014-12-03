@@ -36,10 +36,13 @@ def get_latest(target, check):
 	is_current = returncode != 0
 
 	information =dict(
-		local=local_name,
+		local=dict(
+			name=local_name,
+		    value=local_name,
+		),
 		remote=dict(
 			name=remote_name,
-			value=not is_current
+			value=remote_name
 		)
 	)
 

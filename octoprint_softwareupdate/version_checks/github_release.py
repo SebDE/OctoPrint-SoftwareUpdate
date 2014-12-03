@@ -67,7 +67,7 @@ def get_latest(target, check):
 	compare_type = check["release_compare"] if "release_compare" in check else "semantic"
 
 	information =dict(
-		local=check["current"],
+		local=dict(name=check["current"], value=check["current"]),
 		remote=dict(name=remote_name, value=remote_tag)
 	)
 

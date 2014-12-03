@@ -1,7 +1,13 @@
 <div id="settings_plugin_softwareupdate_dialog" data-bind="allowBindings: true">
     <h3>Current versions</h3>
     <ul data-bind="foreach: versions.paginatedItems()">
-        <li><span data-bind="text: name"></span>: <span data-bind="text: version"></span> <span data-bind="visible: updateAvailable">{{ _('(update available)') }}</span></li>
+        <li>
+            <span data-bind="text: displayName"></span>: <span data-bind="text: displayVersion"></span> <span data-bind="visible: updateAvailable">{{ _('(update available)') }}</span><br>
+            <small class="muted">
+                Local: <span data-bind="text: information.local.name"></span><br>
+                Remote: <span data-bind="text: information.remote.name"></span>
+            </small>
+        </li>
     </ul>
 
     <h3>Manual check</h3>

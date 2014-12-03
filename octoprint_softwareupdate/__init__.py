@@ -238,8 +238,14 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			update_available = update_available or target_update_available
 			update_possible = update_possible or (target_update_possible and target_update_available)
 			information[target] = dict(updateAvailable=target_update_available, updatePossible=target_update_possible, information=target_information)
-			if "display" in check:
-				information[target]["displayName"] = check["display"]
+			if "displayName" in check:
+				information[target]["displayName"] = check["displayName"]
+			if "displayVersion" in check:
+				from octoprint._version import get_versions
+				octoprint_version = get_versions()["version"]
+				local_name = target_information["local"]["name"]
+				local_value = target_information["local"]["value"]
+				information[target]["displayVersion"] = check["displayVersion"].format(octoprint_version=octoprint_version, local_name=local_name, local_value=local_value)
 
 		return information, update_available, update_possible
 

@@ -71,13 +71,13 @@ def get_latest(target, check):
 
 	if local_commit == remote_commit or remote_commit == base:
 		information = dict(
-			local=local_commit,
+			local=dict(name="Commit %s" % local_commit, value=local_commit),
 			remote=dict(name="Commit %s" % local_commit, value=local_commit)
 		)
 		is_current = True
 	else:
 		information = dict(
-			local=local_commit,
+			local=dict(name="Commit %s" % local_commit, value=local_commit),
 			remote=dict(name="Commit %s" % remote_commit, value=remote_commit)
 		)
 		is_current = local_commit == remote_commit

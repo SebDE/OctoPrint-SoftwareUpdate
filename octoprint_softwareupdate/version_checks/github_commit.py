@@ -41,7 +41,7 @@ def get_latest(target, check):
 	remote_commit = _get_latest_commit(check["user"], check["repo"], branch)
 
 	information = dict(
-		local=check["current"],
+		local=dict(name="Commit %s" % check["current"], value=check["current"]),
 		remote=dict(name="Commit %s" % remote_commit, value=remote_commit)
 	)
 	is_current = check["current"] == remote_commit

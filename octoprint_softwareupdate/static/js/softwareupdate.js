@@ -12,6 +12,26 @@ $(function() {
 
         self.currentlyBeingUpdated = [];
 
+        self.versions = new ItemListHelper(
+            "plugin.softwareupdate.versions",
+            {
+                "name": function(a, b) {
+                    // sorts ascending, puts octoprint first
+                    if (a.key.toLocaleLowerCase() == "octoprint") return -1;
+                    if (b.key.toLocaleLowerCase() == "octoprint") return 1;
+
+                    if (a.displayName.toLocaleLowerCase() < b.displayName.toLocaleLowerCase()) return -1;
+                    if (a.displayName.toLocaleLowerCase() > b.displayName.toLocaleLowerCase()) return 1;
+                    return 0;
+                }
+            },
+            {},
+            "name",
+            [],
+            [],
+            10
+        );
+
         self.loginState.subscribe(function(event) {
             self.performCheck();
         });
@@ -44,23 +64,28 @@ $(function() {
                 type: "GET",
                 dataType: "json",
                 success: function(data) {
+                    var versions = [];
+                    _.each(data.information, function(value, key) {
+                        value["key"] = key;
+
+                        if (!value.hasOwnProperty("displayName") || value.displayName == "") {
+                            value.displayName = value.key;
+                        }
+                        if (!value.hasOwnProperty("displayVersion") || value.displayVersion == "") {
+                            value.displayVersion = value.information.local.name;
+                        }
+
+                        versions.push(value);
+                    });
+                    self.versions.updateItems(versions);
+
                     if (data.status == "updateAvailable" || data.status == "updatePossible") {
                         var text = gettext("There are updates available for the following components:");
 
-                        // sort our keys
-                        var sorted_keys = _.sortBy(_.keys(data.information), function(item) {
-                            if (item == "octoprint") {
-                                return "";
-                            } else {
-                                return item
-                            }
-                        });
-
                         text += "<ul>";
-                        _.each(sorted_keys, function(key) {
-                            var update_info = data.information[key];
+                        _.each(self.versions.items(), function(update_info) {
                             if (update_info.updateAvailable) {
-                                var displayName = key;
+                                var displayName = update_info.key;
                                 if (update_info.hasOwnProperty("displayName")) {
                                     displayName = update_info.displayName;
                                 }
