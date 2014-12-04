@@ -36,11 +36,18 @@ $(function() {
             self.performCheck();
         });
 
-        self._showPopup = function(options) {
+        self._showPopup = function(options, eventListeners) {
             if (self.popup !== undefined) {
                 self.popup.remove();
             }
             self.popup = new PNotify(options);
+
+            if (eventListeners) {
+                var popupObj = self.popup.get();
+                _.each(eventListeners, function(value, key) {
+                    popupObj.on(key, value);
+                })
+            }
         };
 
         self._updatePopup = function(options) {
@@ -101,23 +108,29 @@ $(function() {
                             text: text,
                             hide: false
                         };
+                        var eventListeners = {};
 
                         if (data.status == "updatePossible" && self.loginState.isAdmin()) {
                             // if user is admin, add action buttons
                             options["confirm"] = {
                                 confirm: true,
-                                    buttons: [{
-                                        text: gettext("Update now"),
-                                        click: self.update
-                                    }]
+                                buttons: [{
+                                    text: gettext("Update now"),
+                                    click: self.update
+                                }]
                             };
                             options["buttons"] = {
                                 closer: false,
                                 sticker: false
                             };
+                            eventListeners["pnotify.cancel"] = function() {
+                                self._showPopup({
+                                    text: gettext("You can make this message display again via \"Settings\" > \"SoftwareUpdate\" > \"Check for update now\"")
+                                });
+                            };
                         }
 
-                        self._showPopup(options);
+                        self._showPopup(options, eventListeners);
                     } else if (data.status == "current" && showIfNothingNew) {
                         self._showPopup({
                             title: gettext("Everything is up-to-date"),
