@@ -116,9 +116,9 @@ def perform_update():
 	global _plugin
 
 	from octoprint.server import printer
-	if printer.isPrinting():
+	if printer.isPrinting() or printer.isPaused():
 		# do not update while a print job is running
-		flask.make_response("Printer is currently printing", 409)
+		flask.make_response("Printer is currently printing or paused", 409)
 
 	if not "application/json" in flask.request.headers["Content-Type"]:
 		flask.make_response("Expected content-type JSON", 400)
