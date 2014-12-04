@@ -425,6 +425,9 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 				self._send_client_message("update_failed", dict(target=target, version=target_version, reason="unknown"))
 
 		else:
+			# make sure that any external changes to config.yaml are loaded into the system
+			s.load()
+
 			# persist the new version if necessary for check type
 			if check["type"] == "github_commit":
 				checks = s.get(["checks"], merged=True)
