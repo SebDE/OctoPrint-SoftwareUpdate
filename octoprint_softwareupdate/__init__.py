@@ -186,9 +186,6 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 	#~~ Asset API
 
-	def get_asset_folder(self):
-		return os.path.join(os.path.dirname(os.path.realpath(__file__)), "static")
-
 	def get_assets(self):
 		return dict(
 			js=["js/softwareupdate.js"]
@@ -198,12 +195,11 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 	def get_template_vars(self):
 		return dict(
-			_settings_menu_entry="SoftwareUpdate"
+			_settings=dict(
+				name="SoftwareUpdate",
+				custom_bindings=True
+			)
 		)
-
-	def get_template_folder(self):
-		import os
-		return os.path.join(os.path.dirname(os.path.realpath(__file__)), "templates")
 
 	#~~ Updater
 

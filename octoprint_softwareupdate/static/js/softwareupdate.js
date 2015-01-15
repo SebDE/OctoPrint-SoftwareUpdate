@@ -360,5 +360,5 @@ $(function() {
     }
 
     // view model class, parameters for constructor, container to bind to
-    ADDITIONAL_VIEWMODELS.push([SoftwareUpdateViewModel, ["loginStateViewModel", "printerStateViewModel"], document.getElementById("settings_plugin_softwareupdate_dialog")]);
+    ADDITIONAL_VIEWMODELS.push([SoftwareUpdateViewModel, ["loginStateViewModel", "printerStateViewModel"], document.getElementById("settings_plugin_softwareupdate")]);
 });
