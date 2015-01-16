@@ -193,13 +193,10 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 	##~~ TemplatePlugin API
 
-	def get_template_vars(self):
-		return dict(
-			_settings=dict(
-				name="SoftwareUpdate",
-				custom_bindings=True
-			)
-		)
+	def get_template_configs(self):
+		return [
+			dict(type="settings", name="Software Update")
+		]
 
 	#~~ Updater
 
