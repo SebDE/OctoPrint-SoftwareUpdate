@@ -20,7 +20,7 @@ def params():
 	description = "TODO"
 	author = "Gina Häußge"
 	author_email = "osd@foosel.net"
-	url = "http://octoprint.org"
+	url = "http://github.com/OctoPrint/OctoPrint-SoftwareUpdate"
 	license = "AGPLv3"
 
 	packages = setuptools.find_packages()
