@@ -303,7 +303,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		updater_thread.daemon = False
 		updater_thread.start()
 
-		return to_be_updated, dict((key, check["display"] if "display" in check else key) for key, check in checks.items() if key in to_be_updated)
+		return to_be_updated, dict((key, check["displayName"] if "displayName" in check else key) for key, check in checks.items() if key in to_be_updated)
 
 	def _update_worker(self, checks, check_targets, force):
 
