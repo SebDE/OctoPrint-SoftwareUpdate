@@ -401,6 +401,10 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 					checks[target]["current"] = target_version
 					self._settings.set(["checks"], checks)
 
+					# we have to save here (even though that makes us save quite often) since otherwise the next
+					# load will overwrite our changes we just made
+					self._settings.save()
+
 		return target_error, target_result
 
 	def _perform_restart(self, restart_command):
