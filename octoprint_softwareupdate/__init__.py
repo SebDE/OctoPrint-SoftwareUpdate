@@ -44,100 +44,9 @@ def __plugin_init__():
 	global __plugin_implementations__
 	__plugin_implementations__ = [_plugin]
 
-
-##~~ Settings
-
-
-default_settings = {
-	"checks": {
-		"octoprint": {
-			"type": "github_release",
-			"user": "foosel",
-			"repo": "OctoPrint",
-			"update_script": "{{python}} \"{update_script}\" --python=\"{{python}}\" \"{{folder}}\" {{target}}".format(update_script=os.path.join(os.path.dirname(os.path.realpath(__file__)), "scripts", "update-octoprint.py")),
-			"restart": "octoprint"
-		},
-	},
-
-	"octoprint_restart_command": None,
-	"environment_restart_command": None,
-
-	"cache_ttl": 60,
-}
-
-check_defaults = {
-	"check_type": None,
-	# version_check: commandline
-	"command": None,
-	# version_check: git_commit
-	"checkout_folder": None,
-	# version_check: github_commit & github_release
-	"user": None,
-	"repo": None,
-	"branch": None,
-	# update_type: update_script
-	"update_script": None,
-	"update_folder": None,
-	# update_type: pip
-	"pip": None,
-	"force_reinstall": None
-}
-
-s = octoprint.plugin.plugin_settings("softwareupdate", defaults=default_settings)
-
 ##~~ Blueprint
 
 blueprint = flask.Blueprint("plugin.softwareupdate", __name__)
-
-@blueprint.route("/check", methods=["GET"])
-def check_for_update():
-	global _plugin
-
-	if "check" in flask.request.values:
-		check_targets = map(str.strip, flask.request.values["check"].split(","))
-	else:
-		check_targets = None
-
-	if "force" in flask.request.values and flask.request.values["force"] in octoprint.settings.valid_boolean_trues:
-		force = True
-	else:
-		force=False
-
-	try:
-		information, update_available, update_possible = _plugin.get_current_versions(check_targets=check_targets, force=force)
-		return flask.jsonify(dict(status="updatePossible" if update_available and update_possible else "updateAvailable" if update_available else "current", information=information))
-	except exceptions.ConfigurationInvalid as e:
-		flask.make_response("Update not properly configured, can't proceed: %s" % e.message, 500)
-
-
-@blueprint.route("/update", methods=["POST"])
-@restricted_access
-def perform_update():
-	global _plugin
-
-	from octoprint.server import printer
-	if printer.isPrinting() or printer.isPaused():
-		# do not update while a print job is running
-		flask.make_response("Printer is currently printing or paused", 409)
-
-	if not "application/json" in flask.request.headers["Content-Type"]:
-		flask.make_response("Expected content-type JSON", 400)
-
-	json_data = flask.request.json
-
-	if "check" in json_data:
-		check_targets = map(str.strip, json_data["check"])
-	else:
-		check_targets = None
-
-	if "force" in json_data:
-		from octoprint.settings import valid_boolean_trues
-		force = (json_data["force"] in valid_boolean_trues)
-	else:
-		force = False
-
-	to_be_checked, checks = _plugin.perform_updates(check_targets=check_targets, force=force)
-	return flask.jsonify(dict(order=to_be_checked, checks=checks))
 
 
 ##~~ Plugin
@@ -157,13 +66,16 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		self._plugin_manager = None
 
 		self._version_cache = dict()
-		self._version_cache_ttl = s.getInt(["cache_ttl"]) * 60
+		self._version_cache_ttl = 0
+
+	def initialize(self):
+		self._version_cache_ttl = self._settings.getInt(["cache_ttl"]) * 60
 
 	def _get_configured_checks(self):
 		with self._configured_checks_mutex:
 			if self._configured_checks is None:
-				self._configured_checks = s.get(["checks"], merged=True)
-				update_check_hooks = self.plugin_manager.get_hooks("octoprint.plugin.softwareupdate.check_config")
+				self._configured_checks = self._settings.get(["checks"], merged=True)
+				update_check_hooks = self._plugin_manager.get_hooks("octoprint.plugin.softwareupdate.check_config")
 				for name, hook_checks in update_check_hooks.items():
 					for key, data in hook_checks.items():
 						if key in self._configured_checks:
@@ -172,17 +84,77 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 			return self._configured_checks
 
-	@property
-	def plugin_manager(self):
-		if self._plugin_manager is None:
-			self._plugin_manager = octoprint.plugin.plugin_manager()
-		return self._plugin_manager
+	#~~ SettingsPlugin API
+
+	def get_settings_defaults(self):
+		return {
+			"checks": {
+				"octoprint": {
+					"type": "github_release",
+					"user": "foosel",
+					"repo": "OctoPrint",
+					"update_script": "{{python}} \"{update_script}\" --python=\"{{python}}\" \"{{folder}}\" {{target}}".format(update_script=os.path.join(self._basefolder, "scripts", "update-octoprint.py")),
+					"restart": "octoprint"
+				},
+			},
+
+			"octoprint_restart_command": None,
+			"environment_restart_command": None,
+
+			"cache_ttl": 60,
+		}
 
 	#~~ BluePrint API
 
-	def get_blueprint(self):
-		global blueprint
-		return blueprint
+	@octoprint.plugin.BlueprintPlugin.route("/check", methods=["GET"])
+	def check_for_update(self):
+		global _plugin
+
+		if "check" in flask.request.values:
+			check_targets = map(str.strip, flask.request.values["check"].split(","))
+		else:
+			check_targets = None
+
+		if "force" in flask.request.values and flask.request.values["force"] in octoprint.settings.valid_boolean_trues:
+			force = True
+		else:
+			force=False
+
+		try:
+			information, update_available, update_possible = _plugin.get_current_versions(check_targets=check_targets, force=force)
+			return flask.jsonify(dict(status="updatePossible" if update_available and update_possible else "updateAvailable" if update_available else "current", information=information))
+		except exceptions.ConfigurationInvalid as e:
+			flask.make_response("Update not properly configured, can't proceed: %s" % e.message, 500)
+
+
+	@octoprint.plugin.BlueprintPlugin.route("/update", methods=["POST"])
+	@restricted_access
+	def perform_update(self):
+		global _plugin
+
+		from octoprint.server import printer
+		if printer.isPrinting() or printer.isPaused():
+			# do not update while a print job is running
+			flask.make_response("Printer is currently printing or paused", 409)
+
+		if not "application/json" in flask.request.headers["Content-Type"]:
+			flask.make_response("Expected content-type JSON", 400)
+
+		json_data = flask.request.json
+
+		if "check" in json_data:
+			check_targets = map(str.strip, json_data["check"])
+		else:
+			check_targets = None
+
+		if "force" in json_data:
+			from octoprint.settings import valid_boolean_trues
+			force = (json_data["force"] in valid_boolean_trues)
+		else:
+			force = False
+
+		to_be_checked, checks = _plugin.perform_updates(check_targets=check_targets, force=force)
+		return flask.jsonify(dict(order=to_be_checked, checks=checks))
 
 	#~~ Asset API
 
@@ -344,7 +316,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 		finally:
 			# we might have needed to update the config, so we'll save that now
-			s.save()
+			self._settings.save()
 
 			# also, we are now longer updating
 			self._update_in_progress = False
@@ -358,7 +330,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 			if restart_type is not None and restart_type in ("octoprint", "environment"):
 				# one of our updates requires a restart of either type "octoprint" or "environment". Let's see if
 				# we can actually perform that
-				restart_command = s.get(["%s_restart_command" % restart_type])
+				restart_command = self._settings.get(["%s_restart_command" % restart_type])
 
 				if restart_command is not None:
 					self._send_client_message("restarting", dict(restart_type=restart_type, results=target_results))
@@ -419,15 +391,15 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 
 		else:
 			# make sure that any external changes to config.yaml are loaded into the system
-			s.load()
+			self._settings.load()
 
 			# persist the new version if necessary for check type
 			if check["type"] == "github_commit":
-				checks = s.get(["checks"], merged=True)
+				checks = self._settings.get(["checks"], merged=True)
 				if target in checks:
 					# TODO make this cleaner, right now it saves too much to disk
 					checks[target]["current"] = target_version
-					s.set(["checks"], checks)
+					self._settings.set(["checks"], checks)
 
 		return target_error, target_result
 
