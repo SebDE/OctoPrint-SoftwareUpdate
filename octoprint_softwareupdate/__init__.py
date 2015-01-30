@@ -253,7 +253,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 		return information, update_available, update_possible
 
 	def _send_client_message(self, message_type, data=None):
-		self.plugin_manager.send_plugin_message("softwareupdate", dict(type=message_type, data=data))
+		self._plugin_manager.send_plugin_message("softwareupdate", dict(type=message_type, data=data))
 
 	def perform_updates(self, check_targets=None, force=False):
 		"""
