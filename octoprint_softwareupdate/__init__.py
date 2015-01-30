@@ -25,7 +25,7 @@ import octoprint.settings
 ##~~ Plugin Metadata and Initialization
 
 
-__plugin_name__ = "SoftwareUpdate"
+__plugin_name__ = "Software Update"
 __plugin_version__ = "0.1"
 __plugin_description__ = "TODO"
 

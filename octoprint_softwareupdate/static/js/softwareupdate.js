@@ -29,7 +29,7 @@ $(function() {
             "name",
             [],
             [],
-            10
+            5
         );
 
         self.loginState.subscribe(function(event) {
