@@ -132,8 +132,7 @@ class SoftwareUpdatePlugin(octoprint.plugin.BlueprintPlugin,
 	def perform_update(self):
 		global _plugin
 
-		from octoprint.server import printer
-		if printer.isPrinting() or printer.isPaused():
+		if self._printer.is_printing() or self._printer.is_paused():
 			# do not update while a print job is running
 			flask.make_response("Printer is currently printing or paused", 409)
 
