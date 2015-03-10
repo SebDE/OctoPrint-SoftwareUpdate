@@ -21,7 +21,7 @@ def _get_latest_release(user, repo, include_prerelease=False):
 	log_github_ratelimit(logger, r)
 
 	if not r.status_code == requests.codes.ok:
-		return None
+		return None, None
 
 	releases = r.json()
 
@@ -32,7 +32,7 @@ def _get_latest_release(user, repo, include_prerelease=False):
 		releases = filter(lambda rel: not rel["prerelease"] and not rel["draft"], releases)
 
 	if not releases:
-		return None
+		return None, None
 
 	# sort by date
 	comp = lambda a, b: cmp(a["published_at"], b["published_at"])
@@ -45,6 +45,9 @@ def _get_latest_release(user, repo, include_prerelease=False):
 
 
 def _is_current(release_information, compare_type, custom=None):
+	if release_information["remote"]["value"] is None:
+		return True
+
 	if not compare_type in ("semantic", "unequal", "custom") or compare_type == "custom" and custom is None:
 		compare_type = "semantic"
 
@@ -55,13 +58,15 @@ def _is_current(release_information, compare_type, custom=None):
 		remote_version = semantic_version.Version(release_information["remote"]["value"])
 
 		return local_version >= remote_version
+
 	elif compare_type == "custom":
 		return custom(release_information["local"], release_information["remote"])
+
 	else:
 		return release_information["local"]["value"] == release_information["remote"]["value"]
 
 
-def get_latest(target, check):
+def get_latest(target, check, custom_compare=None):
 	if not "user" in check or not "repo" in check or not "current" in check:
 		raise ConfigurationInvalid("github_release update configuration for %s needs user, repo and current set" % target)
 
@@ -75,4 +80,4 @@ def get_latest(target, check):
 
 	logger.debug("Target: %s, local: %s, remote: %s" % (target, check["current"], remote_tag))
 
-	return information, _is_current(information, compare_type)
+	return information, _is_current(information, compare_type, custom=custom_compare)

@@ -44,7 +44,7 @@ def get_latest(target, check):
 		local=dict(name="Commit %s" % check["current"], value=check["current"]),
 		remote=dict(name="Commit %s" % remote_commit, value=remote_commit)
 	)
-	is_current = check["current"] == remote_commit
+	is_current = check["current"] == remote_commit or remote_commit is None
 
 	logger.debug("Target: %s, local: %s, remote: %s" % (target, check["current"], remote_commit))
 
