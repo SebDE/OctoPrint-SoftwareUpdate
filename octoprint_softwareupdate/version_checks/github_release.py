@@ -44,8 +44,8 @@ def _get_latest_release(user, repo, include_prerelease=False):
 	return latest["name"], latest["tag_name"]
 
 
-def _is_current(release_information, compare_type):
-	if not compare_type in ("semantic", "unequal"):
+def _is_current(release_information, compare_type, custom=None):
+	if not compare_type in ("semantic", "unequal", "custom") or compare_type == "custom" and custom is None:
 		compare_type = "semantic"
 
 	if compare_type == "semantic":
@@ -55,8 +55,10 @@ def _is_current(release_information, compare_type):
 		remote_version = semantic_version.Version(release_information["remote"]["value"])
 
 		return local_version >= remote_version
+	elif compare_type == "custom":
+		return custom(release_information["local"], release_information["remote"])
 	else:
-		return release_information["local"] == release_information["remote"]["value"]
+		return release_information["local"]["value"] == release_information["remote"]["value"]
 
 
 def get_latest(target, check):
